@@ -240,6 +240,8 @@ select option { background: var(--surf2); }
 .card.live-tw     { border-color: rgba(145,70,255,.35); background: linear-gradient(90deg, rgba(145,70,255,.07), var(--surf) 50%); }
 .card.upcoming    { border-color: rgba(232,192,56,.35); background: linear-gradient(90deg, rgba(232,192,56,.06), var(--surf) 50%); }
 .card.upcoming .indicator { background: var(--yellow); box-shadow: 0 0 5px var(--yellow); animation: none; }
+.card.waiting     { border-color: rgba(232,192,56,.25); background: linear-gradient(90deg, rgba(232,192,56,.04), var(--surf) 50%); }
+.card.waiting .indicator  { background: var(--yellow); opacity: .5; animation: blink 2.5s infinite; }
 .card.dragging    { opacity: .3; cursor: grabbing; }
 .card.drag-over   { border-color: var(--orange) !important; }
 
@@ -301,6 +303,8 @@ select option { background: var(--surf2); }
 .live-tag-yt  { color: var(--accent-yt); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; font-size: 11px; }
 .live-tag-tw  { color: var(--accent-tw); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; font-size: 11px; }
 .upcoming-tag { color: var(--yellow); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; font-size: 11px; }
+.waiting-tag  { color: var(--yellow); font-weight: 600; font-size: 11px; opacity: .75; }
+.sched-time   { font-size: 11px; color: var(--text3); font-variant-numeric: tabular-nums; }
 .countdown    { font-size: 11px; font-weight: 600; color: var(--yellow); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
 .stream-ttl   { color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; font-weight: 400; }
 .err-tag     { color: var(--yellow); font-size: 11px; }
@@ -603,6 +607,27 @@ select option { background: var(--surf2); }
             <div class="sw-track"></div><div class="sw-knob"></div>
           </label>
         </div>
+        <div style="padding:4px 0;margin-bottom:6px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Timezone</div>
+          <select id="tz-select" onchange="saveTz(this.value)" style="width:100%">
+            <option value="Asia/Singapore">GMT+8 — Singapore / KL</option>
+            <option value="Asia/Tokyo">GMT+9 — Tokyo</option>
+            <option value="Asia/Seoul">GMT+9 — Seoul</option>
+            <option value="Asia/Shanghai">GMT+8 — Shanghai / Taipei</option>
+            <option value="Asia/Jakarta">GMT+7 — Jakarta</option>
+            <option value="Asia/Bangkok">GMT+7 — Bangkok</option>
+            <option value="Asia/Kolkata">GMT+5:30 — India</option>
+            <option value="Asia/Dubai">GMT+4 — Dubai</option>
+            <option value="Europe/London">GMT+0/+1 — London</option>
+            <option value="Europe/Paris">GMT+1/+2 — Paris / Berlin</option>
+            <option value="America/New_York">GMT-5/-4 — New York</option>
+            <option value="America/Chicago">GMT-6/-5 — Chicago</option>
+            <option value="America/Denver">GMT-7/-6 — Denver</option>
+            <option value="America/Los_Angeles">GMT-8/-7 — Los Angeles</option>
+            <option value="Pacific/Auckland">GMT+12/+13 — Auckland</option>
+            <option value="Australia/Sydney">GMT+10/+11 — Sydney</option>
+          </select>
+        </div>
       </div>
 
       <!-- Cookies -->
@@ -782,6 +807,7 @@ function stopChannelPolling() {
   const s = await call('/api/status');
   if (s.auto_check) startChannelPolling(9000);
   syncCookieStatus();
+  loadTz();
 })();
 
 // ── API ────────────────────────────────────────────────────────────────────
@@ -926,12 +952,13 @@ function render() {
     return;
   }
 
-  // Sort: live first, then upcoming, then offline — stable (preserves manual order within groups)
+  // Sort: live → upcoming → waiting → offline — stable within each group
   const sorted = visible.slice().sort((a, b) => {
     const rank = c => {
       if (c.last_status && c.last_status.is_live)     return 0;
       if (c.last_status && c.last_status.is_upcoming) return 1;
-      return 2;
+      if (c.last_status && c.last_status.is_waiting)  return 2;
+      return 3;
     };
     return rank(a) - rank(b);
   });
@@ -948,12 +975,19 @@ function render() {
                          : (plat === 'twitch' ? 'https://twitch.tv/' + ch.channel_id : ''));
     const chk    = ch.last_checked ? ago(ch.last_checked) : 'never';
     const isUpcoming  = !isLive && ch.last_status && ch.last_status.is_upcoming;
-    const scheduledAt = isUpcoming && ch.last_status.scheduled_at ? ch.last_status.scheduled_at : null;
-    const liveClass   = isLive ? (plat === 'twitch' ? 'live-tw' : 'live-yt') : (isUpcoming ? 'upcoming' : '');
+    const isWaiting   = !isLive && !isUpcoming && ch.last_status && ch.last_status.is_waiting;
+    const scheduledAt = (isUpcoming || isWaiting) && ch.last_status.scheduled_at ? ch.last_status.scheduled_at : null;
+    const liveClass   = isLive
+      ? (plat === 'twitch' ? 'live-tw' : 'live-yt')
+      : isUpcoming ? 'upcoming'
+      : isWaiting  ? 'waiting'
+      : '';
     const liveTag     = isLive
       ? (plat === 'twitch' ? '<span class="live-tag-tw">◈ LIVE</span>' : '<span class="live-tag-yt">▶ LIVE</span>')
       : isUpcoming
         ? '<span class="upcoming-tag">⏰ UPCOMING</span>'
+      : isWaiting
+        ? '<span class="waiting-tag">⌛ Waiting to start…</span>'
         : '<span>offline</span>';
     const avatarSrc = ch.avatar ? '/api/avatar?url=' + encodeURIComponent(ch.avatar) : '';
 
@@ -977,8 +1011,9 @@ function render() {
       + (isLive && ch.last_status.started_at
         ? '<span class="dot-sep">·</span><span class="live-dur" data-started="' + x(ch.last_status.started_at) + '">⏱ …</span>'
         : '')
-      + (isUpcoming && scheduledAt
+      + ((isUpcoming || isWaiting) && scheduledAt
         ? '<span class="dot-sep">·</span><span class="countdown" data-scheduled="' + x(scheduledAt) + '">⏰ …</span>'
+          + '<span class="dot-sep">·</span><span class="sched-time" data-scheduled="' + x(scheduledAt) + '">…</span>'
         : '')
       + (isLive && url
         ? '<span class="dot-sep">·</span><div class="watch-row">'
@@ -989,14 +1024,15 @@ function render() {
           + '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Record</button>'
           + '</div>'
         : '')
-      + (isUpcoming && url
+      + ((isUpcoming || isWaiting) && url
         ? '<span class="dot-sep">·</span><div class="watch-row">'
-          + '<a class="watch-link" href="' + x(url) + '" target="_blank">🔔 Reminder</a>'
+          + (isUpcoming ? '<a class="watch-link" href="' + x(url) + '" target="_blank">🔔 Reminder</a>' : '')
+          + (isWaiting  ? '<a class="watch-link" href="' + x(url) + '" target="_blank">▶ Watch</a>' : '')
           + '<button class="copy-btn" data-url="' + x(url) + '" onclick="copyUrl(event,this.dataset.url,this)">'
           + '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button>'
           + '</div>'
         : '')
-      + ((isLive || isUpcoming) && ch.last_status.title ? '<span class="dot-sep">·</span><span class="stream-ttl" data-ci="' + ci + '"></span>' : '')
+      + ((isLive || isUpcoming || isWaiting) && ch.last_status.title ? '<span class="dot-sep">·</span><span class="stream-ttl" data-ci="' + ci + '"></span>' : '')
       + (err ? '<span class="dot-sep">·</span><span class="err-tag" data-ci-err="' + ci + '"></span>' : '')
       + '<span class="dot-sep">·</span><span class="chk-time">' + chk + '</span>'
       + '</div></div>'
@@ -1401,6 +1437,36 @@ function ago(iso) {
   return Math.floor(d/86400) + 'd ago';
 }
 
+// ── Timezone ──────────────────────────────────────────────────────────────
+let _userTz = localStorage.getItem('userTz') || 'Asia/Tokyo';
+
+function loadTz() {
+  const sel = document.getElementById('tz-select');
+  if (sel) sel.value = _userTz;
+}
+
+function saveTz(tz) {
+  _userTz = tz;
+  localStorage.setItem('userTz', tz);
+  _tickDurations(); // re-render times immediately
+}
+
+function _fmtSchedTime(isoStr) {
+  try {
+    const d = new Date(isoStr);
+    return d.toLocaleString('en-GB', {
+      timeZone:  _userTz,
+      month:     'short',
+      day:       'numeric',
+      hour:      '2-digit',
+      minute:    '2-digit',
+      hour12:    false,
+    });
+  } catch(e) {
+    return '';
+  }
+}
+
 // ── Live duration ticker ──────────────────────────────────────────────────
 let _durTimer = null;
 
@@ -1425,10 +1491,14 @@ function _tickDurations() {
     if (isNaN(sched)) return;
     const diff = sched - now;
     if (diff <= 0) {
-      el.textContent = '⏰ Starting…';
+      el.textContent = '⌛ Waiting to start…';
     } else {
       el.textContent = '⏰ in ' + _fmtCountdown(diff);
     }
+  });
+  // Absolute scheduled time in user timezone
+  document.querySelectorAll('.sched-time[data-scheduled]').forEach(el => {
+    el.textContent = _fmtSchedTime(el.dataset.scheduled);
   });
 }
 

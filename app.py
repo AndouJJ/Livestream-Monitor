@@ -222,11 +222,12 @@ def resolve_youtube(query: str) -> tuple:
     return ch_id, name, avatar
 
 
-def _base_status(is_live=False, is_upcoming=False, **kw) -> dict:
+def _base_status(is_live=False, is_upcoming=False, is_waiting=False, **kw) -> dict:
     """Return a fully-populated status dict with safe defaults."""
     return {
         "is_live":      is_live,
         "is_upcoming":  is_upcoming,
+        "is_waiting":   is_waiting,   # past scheduled_at, not yet live
         "video_id":     kw.get("video_id"),
         "title":        kw.get("title"),
         "url":          kw.get("url"),
@@ -611,41 +612,82 @@ def check_live(ch: dict) -> dict:
     return check_youtube_live(ch["channel_id"])
 
 
+# Consecutive offline checks needed before confirming a live stream ended.
+# Prevents notification spam from transient scrape failures.
+_OFFLINE_CONFIRM = 2
+
 def check_all_channels():
     with _lock:
         channels = list(state["channels"])
     for ch in channels:
-        prev          = ch.get("last_status", {})
-        was_live      = prev.get("is_live", False)
-        was_upcoming  = prev.get("is_upcoming", False)
-        prev_started  = prev.get("started_at")
-        status        = check_live(ch)
+        prev         = ch.get("last_status", {})
+        was_live     = prev.get("is_live", False)
+        was_upcoming = prev.get("is_upcoming", False)
+        was_waiting  = prev.get("is_waiting", False)
+        prev_started = prev.get("started_at")
+        prev_sched   = prev.get("scheduled_at")
+        prev_url     = prev.get("url")
+        prev_title   = prev.get("title")
+        prev_vid     = prev.get("video_id")
 
+        status = check_live(ch)
+        now    = datetime.now(timezone.utc)
+
+        # ── Hysteresis: live → offline requires _OFFLINE_CONFIRM consecutive fails ──
+        if was_live and not status.get("is_live"):
+            miss = ch.get("_offline_misses", 0) + 1
+            ch["_offline_misses"] = miss
+            if miss < _OFFLINE_CONFIRM:
+                # Not enough misses yet — hold the previous live status
+                ch["last_checked"] = now.isoformat()
+                continue          # skip status update entirely this cycle
+        else:
+            ch["_offline_misses"] = 0
+
+        # ── Preserve started_at across checks while live ──────────────────────────
         if status.get("is_live"):
             if not was_live:
-                # offline/upcoming → live: stamp start time if scraper didn't get it
                 if not status.get("started_at"):
-                    status["started_at"] = datetime.now(timezone.utc).isoformat()
+                    status["started_at"] = now.isoformat()
             elif prev_started and not status.get("started_at"):
                 status["started_at"] = prev_started
 
-        ch["last_status"]  = status
-        ch["last_checked"] = datetime.now(timezone.utc).isoformat()
+        # ── Waiting state: was upcoming, scheduled time passed, not yet live ──────
+        # Keep the channel in "waiting" (not offline) for up to 48 hours after
+        # the scheduled time so delayed streams don't look like cancellations.
+        if not status.get("is_live") and not status.get("is_upcoming"):
+            if (was_upcoming or was_waiting) and (prev_sched or prev_url):
+                # Check if we're within the grace window
+                grace_expired = False
+                if prev_sched:
+                    try:
+                        sched_dt = datetime.fromisoformat(prev_sched.replace("Z", "+00:00"))
+                        grace_expired = (now - sched_dt).total_seconds() > 48 * 3600
+                    except Exception:
+                        pass
+                if not grace_expired:
+                    # Keep the stream's metadata, mark as waiting
+                    status["is_waiting"]   = True
+                    status["url"]          = status.get("url") or prev_url
+                    status["title"]        = status.get("title") or prev_title
+                    status["video_id"]     = status.get("video_id") or prev_vid
+                    status["scheduled_at"] = prev_sched
 
-        # Notification: any transition to live (offline→live or upcoming→live)
+        ch["last_status"]  = status
+        ch["last_checked"] = now.isoformat()
+
+        # ── Notifications ─────────────────────────────────────────────────────────
+        name = ch.get("name", ch.get("channel_id", ""))
+        # live notification: only on genuine transition to live
         if not was_live and status.get("is_live"):
-            name  = ch.get("name", ch.get("channel_id", ""))
-            title = status.get("title") or ""
-            url   = status.get("url") or ""
             _push_notif("live", f"🔴 {name} is live",
-                        title or "Started streaming", url)
-        # Notification: new upcoming stream detected
-        elif not was_upcoming and status.get("is_upcoming"):
-            name     = ch.get("name", ch.get("channel_id", ""))
-            title    = status.get("title") or ""
-            sched    = status.get("scheduled_at") or ""
+                        status.get("title") or "Started streaming",
+                        status.get("url") or "")
+        # upcoming notification: only first time we see the upcoming flag
+        elif not was_upcoming and not was_waiting and status.get("is_upcoming"):
             _push_notif("upcoming", f"📅 {name} scheduled a stream",
-                        title, status.get("url") or "")
+                        status.get("title") or "",
+                        status.get("url") or "")
     with _lock:
         state["last_global_check"] = datetime.now(timezone.utc).isoformat()
     save_channels()
