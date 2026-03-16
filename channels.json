@@ -1,0 +1,640 @@
+[
+  {
+    "channel_id": "ramuneshiranami",
+    "name": "ramuneshiranami",
+    "platform": "twitch",
+    "last_checked": "2026-03-16T01:26:20.485996+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://static-cdn.jtvnw.net/jtv_user_pictures/8e3eb29d-ea92-4268-84b6-12c3384c834b-profile_image-300x300.png"
+  },
+  {
+    "channel_id": "akarindao",
+    "name": "akarindao",
+    "platform": "twitch",
+    "last_checked": "2026-03-16T01:26:20.529782+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://static-cdn.jtvnw.net/jtv_user_pictures/d92ee667-de20-403c-9871-718c8887098c-profile_image-300x300.png"
+  },
+  {
+    "channel_id": "ren_kisaragi__",
+    "name": "ren_kisaragi__",
+    "platform": "twitch",
+    "last_checked": "2026-03-16T01:26:20.570432+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://static-cdn.jtvnw.net/jtv_user_pictures/eb8cf0ff-e964-40c3-95dd-9d4e34fcd8e8-profile_image-300x300.png"
+  },
+  {
+    "channel_id": "sendo_yuuhi",
+    "name": "sendo_yuuhi",
+    "platform": "twitch",
+    "last_checked": "2026-03-16T01:26:20.618058+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://static-cdn.jtvnw.net/jtv_user_pictures/6610f630-9035-4342-b841-5bc73df400f4-profile_image-300x300.png"
+  },
+  {
+    "channel_id": "kokagetsumugi",
+    "name": "kokagetsumugi",
+    "platform": "twitch",
+    "last_checked": "2026-03-16T01:26:20.660426+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://static-cdn.jtvnw.net/jtv_user_pictures/6d34b7dc-b003-45db-b008-6907dd93de24-profile_image-300x300.png"
+  },
+  {
+    "channel_id": "met_komori",
+    "name": "met_komori",
+    "platform": "twitch",
+    "last_checked": "2026-03-16T01:26:20.705498+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://static-cdn.jtvnw.net/jtv_user_pictures/7e8a0187-880f-485d-ae5d-a3ef5fcea1e9-profile_image-300x300.png"
+  },
+  {
+    "channel_id": "shinomiya_runa",
+    "name": "shinomiya_runa",
+    "platform": "twitch",
+    "last_checked": "2026-03-16T01:26:20.750934+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://static-cdn.jtvnw.net/jtv_user_pictures/512b8442-9e10-4b8d-8cd0-45020a098d13-profile_image-300x300.png"
+  },
+  {
+    "channel_id": "emtsmaru",
+    "name": "emtsmaru",
+    "platform": "twitch",
+    "last_checked": "2026-03-16T01:26:20.793506+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://static-cdn.jtvnw.net/jtv_user_pictures/af5a0b69-22c1-48b6-96c1-fe964f89b1e3-profile_image-300x300.png"
+  },
+  {
+    "channel_id": "kaminariqpi",
+    "name": "kaminariqpi",
+    "platform": "twitch",
+    "last_checked": "2026-03-16T01:26:20.834240+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": ""
+  },
+  {
+    "channel_id": "hinanotachiba7",
+    "name": "hinanotachiba7",
+    "platform": "twitch",
+    "last_checked": "2026-03-16T01:26:20.878233+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://static-cdn.jtvnw.net/jtv_user_pictures/cda793c5-a533-4b7c-9412-d4f364a732d2-profile_image-300x300.png"
+  },
+  {
+    "channel_id": "asumisena",
+    "name": "asumisena",
+    "platform": "twitch",
+    "last_checked": "2026-03-16T01:26:20.920455+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": ""
+  },
+  {
+    "channel_id": "uruhaichinose",
+    "name": "uruhaichinose",
+    "platform": "twitch",
+    "last_checked": "2026-03-16T01:26:20.967572+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://static-cdn.jtvnw.net/jtv_user_pictures/9d6c2939-45ec-4413-933e-67c8a062fa82-profile_image-300x300.png"
+  },
+  {
+    "channel_id": "kagasumire",
+    "name": "kagasumire",
+    "platform": "twitch",
+    "last_checked": "2026-03-16T01:26:21.010673+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": ""
+  },
+  {
+    "channel_id": "UCIjdfjcSaEgdjwbgjxC3ZWg",
+    "name": "猫汰つな / Nekota Tsuna",
+    "last_checked": "2026-03-16T01:26:25.055534+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/t8oKW3u3BqieOUZ4j3d_qxV2fBEypIpVkq3vY2SYlOD2gblH-4fSjBOGW9O5eiOagOhhuUzA=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UCIcAj6WkJ8vZ7DeJVgmeqKw",
+    "name": "胡桃のあ",
+    "last_checked": "2026-03-16T01:26:28.670629+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/P0TCuLWSv_bK-G6p7j-wY2XM6w78G8Z-vtZ-XxkuIXfjFuScBCL3_LLCl1W6dgdMe3GcikiskQ=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UCoW8qQy80mKH0RJTKAK-nNA",
+    "name": "龍巻ちせ / Tatsumaki Chise",
+    "last_checked": "2026-03-16T01:26:32.078901+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/iY4fKYP5hjgVTNz69v9pXqmndDfJgYj3YSA47zsDeROBIp3tzxgZQqG3x6W6UZFQum64Dse2b5k=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UCL9hJsdk9eQa0IlWbFB2oRg",
+    "name": "蝶屋はなび / Choya Hanabi",
+    "last_checked": "2026-03-16T01:26:36.378817+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/N7qEUQMbq8z1lQdp4WBUz3vQ83gYiYmPt-alI5K1xMYnOh4uAxuQlUVPneZQKetzACogh6E_qA=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UCuDY3ibSP2MFRgf7eo3cojg",
+    "name": "千燈ゆうひ",
+    "last_checked": "2026-03-16T01:26:39.782827+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/LwrClvbMurf6c81aevjCuKoy8CKwQbuChZlNExzHHeWfaeQQ1kQpbMZPjqBu24TmVeg0RBH7Cg=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UCnvVG9RbOW3J6Ifqo-zKLiw",
+    "name": "兎咲ミミ / Tosaki Mimi",
+    "last_checked": "2026-03-16T01:26:43.781195+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/bOeVSpdqf03t0IIJJFQOkqgRGD9D6iHGuKhOczQ3s50md4LPetjSwImskgcaRHl7Q1FBApbyuw=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UCjXBuHmWkieBApgBhDuJMMQ",
+    "name": "八雲べに",
+    "last_checked": "2026-03-16T01:26:48.307533+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/3DKslDQ-fYLyIA5WNS3cl3Hesu6QRWD74C1kU1MYgoLtzenCSdkz1H4mOmFJ3HT_3ZlhNfFR=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UCurEA8YoqFwimJcAuSHU0MQ",
+    "name": "英リサ.Hanabusa Lisa",
+    "last_checked": "2026-03-16T01:26:52.585794+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/ytc/AIdro_nDEKrUIjF9DlTu-bEc-DenqIj-md5YkUqhGhqwyBLBgQ=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UCgTzsBI0DIRopMylJEDqnog",
+    "name": "小雀とと / Toto Kogara",
+    "last_checked": "2026-03-16T01:26:56.553397+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/ytc/AIdro_lEifEusAxSkqQg12z_wUO1bGfGIqo9Vv4OYz6X5BhCIg=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UC5LyYg6cCA4yHEYvtUsir3g",
+    "name": "一ノ瀬うるは",
+    "last_checked": "2026-03-16T01:27:00.347052+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/ytc/AIdro_myySkwnJbRZM78Ct6Zqok5H0oegoEjLOtg6sdq117VRAM=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UCF_U2GCKHvDz52jWdizppIA",
+    "name": "空澄セナ -Asumi Sena-",
+    "last_checked": "2026-03-16T01:27:04.643654+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/lBR2WoXWscLmYRBvwkwJBQR8-hkPl3aWzEZWzIlRLLG2hJMY-JZxwQ7Cc_EGqcyxqbzfMEzi=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UCPkKpOHxEDcwmUAnRpIu-Ng",
+    "name": "藍沢エマ / Aizawa Ema",
+    "last_checked": "2026-03-16T01:27:08.559564+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/5IXJSJa8Qok0rszVjkdgFUj_9yKqYt82haI-hxUroYMaBdsgcmDO7bUYle30GfTnMjg96Jk9zA=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UC-WX1CXssCtCtc2TNIRnJzg",
+    "name": "紡木こかげ",
+    "last_checked": "2026-03-16T01:27:13.168530+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/k5cVF6C4_wfjYaf3iNU9ZfqTUZp6nwk_f4_Jid3VPIMJcjQj4Zll31sdE0J3yP1HEJoNtl0gyho=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UCLlJpxXt6L5d-XQ0cDdIyDQ",
+    "name": "Arya Kuroha 【VSPO! EN】",
+    "platform": "youtube",
+    "avatar": "https://yt3.googleusercontent.com/O2vuL-OawwrhFQX3oiiVSUey9B3wJ4IBS2q5cPTb-igxsFnUFTSc2vtXSi8nnFdP3Vgik1hq1DM=s240-c-k-c0x00ffffff-no-rj",
+    "last_checked": "2026-03-16T01:27:17.050534+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    }
+  },
+  {
+    "channel_id": "UCzUNASdzI4PV5SlqtYwAkKQ",
+    "name": "Met Channel / 小森めと",
+    "last_checked": "2026-03-16T01:27:20.634750+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/8km4MzJjHfYgZ7gbACC42-p2iwGFjmRFL-mppdpn4y35mIWhDTg2qVxmrGV1WQCqrjV7ZB9_Bw=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UCD5W21JqNMv_tV9nfjvF9sw",
+    "name": "紫宮るな /shinomiya runa",
+    "last_checked": "2026-03-16T01:27:24.593351+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/Rgt9lslf7OZntxcW8A9mMFWDdXTG1IxqCq4tZ14Rd7rB1rm4gxQZPTc5kM9LdGTPmXGWkfyzWw=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UC2xXx1m1jeL0W84_0jTg-Yw",
+    "name": "銀城サイネ / Ginjo Saine",
+    "last_checked": "2026-03-16T01:27:25.860897+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": true,
+      "video_id": "plfxAPTQQg0",
+      "title": "【League of Legends】#VSPO_SHOWDOWN_2026 公式練習4日目。JGのさらなる高みへ！【ぶいすぽっ！ #銀城サイネ 】",
+      "url": "https://youtube.com/watch?v=plfxAPTQQg0",
+      "started_at": null,
+      "scheduled_at": "2026-03-16T09:00:00+00:00",
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/1GsQmWJZ_ABGy-QkyuVM59_5F-iOPMMk5r5dR8bBVwRWjfY2u_Y-vuQptYrnezEvcDiTqXU7=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UCvUc0m317LWTTPZoBQV479A",
+    "name": "橘ひなの / Hinano Tachibana",
+    "last_checked": "2026-03-16T01:27:30.097370+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/qBHwrzfOske0YrfKhyd-tCBGcsoka2h1tHdX09EOdx7uAmAYpYeIEldA-aYYhBROPvADi9_4FA=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UCiMG6VdScBabPhJ1ZtaVmbw",
+    "name": "花芽なずな / Nazuna Kaga",
+    "last_checked": "2026-03-16T01:27:34.056305+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/AiM0dD6-tajxuBeozH1YberZhKAANawzH_WDwLo9zLaqlGaen_nxW6q1RQt7k79FXEeQLXPFOIM=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UC8vKBjGY2HVfbW9GAmgikWw",
+    "name": "甘結もか / Amayui Moka",
+    "last_checked": "2026-03-16T01:27:38.395904+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/e_Vc-qiRBWmj9PaysPGhh9b2bn5YDLs-FhmqDwZTiog6umosQzQEa7phbJwz4eaZsGwzfFze=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UCX4WL24YEOUYd7qDsFSLDOw",
+    "name": "夜乃くろむ / Yano Kuromu",
+    "last_checked": "2026-03-16T01:27:39.974894+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": true,
+      "video_id": "jRLeLne54uw",
+      "title": "〖 VALORANT 〗大切なことを忘れていた、それは。の巻〖 ぶいすぽっ！ / 夜乃くろむ 〗",
+      "url": "https://youtube.com/watch?v=jRLeLne54uw",
+      "started_at": null,
+      "scheduled_at": "2026-03-16T11:00:00+00:00",
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/1akMwH-5NFyiA_cSCHjkOi-h0ZygMVcxMdRHYmCgBtjfha__trYziilH92BCAYgYZQBGOWynsg=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UCS5l_Y0oMVTjEos2LuyeSZQ",
+    "name": "Akari ch.夢野あかり",
+    "last_checked": "2026-03-16T01:27:43.847565+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/hW-Z9l93zqxXn56bdRyo4OgVHn9XIMq7T991dsmnwJ-LTWACf306bVYRb8GSbWEATM3UNhqklw=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UC61OwuYOVuKkpKnid-43Twg",
+    "name": "白波らむね / Shiranami Ramune",
+    "last_checked": "2026-03-16T01:27:48.867900+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/zkGtVL-NEnjNR53Bf02AeO5AlzwxXOcrTBbaY62YY9wQoQh7S13ASJdMGMsPXyw2U2zxNFUysg=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UCGWa1dMU_sDCaRQjdabsVgg",
+    "name": "如月れん -Ren kisaragi-",
+    "last_checked": "2026-03-16T01:27:53.109787+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/l2mkMKBJ9OKCEKuY2HhDx_i0oKYWvjXQontI0pi3_AZwisv6FOQArd13bNpU4ko_rMhfdR-v7zU=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UCMp55EbT_ZlqiMS3lCj01BQ",
+    "name": "神成きゅぴ / Kaminari Qpi",
+    "last_checked": "2026-03-16T01:27:57.328516+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/5IgSXAOfwIFU60tdD88_gdEDZBvJs-3u-ogu3VWWSpWepyN1H9n6Gdyvlgya5PuR0ARtfNl9=s240-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "channel_id": "UCyLGcqYs7RsBb3L0SJfzGYA",
+    "name": "花芽すみれ / Kaga Sumire",
+    "last_checked": "2026-03-16T01:28:02.392593+00:00",
+    "last_status": {
+      "is_live": false,
+      "is_upcoming": false,
+      "video_id": null,
+      "title": null,
+      "url": null,
+      "started_at": null,
+      "scheduled_at": null,
+      "error": null
+    },
+    "avatar": "https://yt3.googleusercontent.com/62gVOJZDVb-9pPCbljnoRlwqEuvcGk0pNl32GNi_GA_KQS3N7X6-B660Pk3crHh3zi1XSzHMNQ=s240-c-k-c0x00ffffff-no-rj"
+  }
+]

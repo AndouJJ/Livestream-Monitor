@@ -1,0 +1,27 @@
+services:
+
+  bgutil-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    container_name: bgutil-provider
+    ports:
+      - "4416:4416"
+    restart: unless-stopped
+
+  yt-monitor:
+    build: .
+    container_name: yt-monitor
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./channels.json:/app/channels.json
+      - ./settings.json:/app/settings.json
+      - ${DOWNLOAD_HOST_PATH:-./downloads}:/app/downloads
+      - ./logs:/app/logs
+      - ./cookies.txt:/app/cookies.txt
+    environment:
+      - BGUTIL_PROVIDER_URL=http://bgutil-provider:4416
+      - COOKIES_FILE=/app/cookies.txt
+      - DOWNLOAD_BASE_DIR=/app/downloads
+    depends_on:
+      - bgutil-provider
+    restart: unless-stopped

@@ -1,0 +1,1584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Livestream Monitor</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:          #0c0d10;
+  --surf:        #13151a;
+  --surf2:       #1a1d24;
+  --surf3:       #20242d;
+  --border:      #23272f;
+  --border2:     #2e333d;
+  --text:        #f0f2f5;
+  --text2:       #b0b8c8;
+  --text3:       #7a8499;
+  --accent-yt:   #e83c42;
+  --accent-tw:   #9146ff;
+  --accent-tw-d: rgba(145,70,255,.15);
+  --accent-yt-d: rgba(232,60,66,.15);
+  --green:       #22d98a;
+  --green-d:     rgba(34,217,138,.12);
+  --orange:      #f07830;
+  --yellow:      #e8c038;
+  --r:           4px;
+  --font:        'Inter', 'Noto Sans JP', sans-serif;
+  --font-d:      'Bebas Neue', sans-serif;
+}
+
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+
+body::before {
+  content: ''; pointer-events: none; position: fixed; inset: 0; z-index: 0;
+  background-image: radial-gradient(rgba(255,255,255,.025) 1px, transparent 1px);
+  background-size: 30px 30px;
+}
+* { position: relative; z-index: 1; }
+
+/* ── App shell ── */
+.app { display: grid; grid-template-rows: 54px 1fr; height: 100vh; }
+
+/* ── Topbar ── */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 22px; background: var(--surf); border-bottom: 1px solid var(--border);
+  flex-shrink: 0; z-index: 100;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-name { font-family: var(--font-d); font-size: 22px; letter-spacing: .1em; color: var(--text); }
+.brand-sep  { color: var(--border2); }
+.brand-sub  { font-size: 11px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--text3); }
+
+.pills { display: flex; gap: 8px; }
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border: 1px solid var(--border2); border-radius: 20px;
+  font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text3);
+  transition: all .3s;
+}
+.pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text3); transition: background .3s; }
+.pill.on      { border-color: rgba(34,217,138,.35); color: var(--green); }
+.pill.on .dot { background: var(--green); animation: blink 2s infinite; }
+.pill.hot     { border-color: rgba(232,60,66,.4); color: var(--accent-yt); }
+.pill.hot .dot{ background: var(--accent-yt); animation: blink 1.2s infinite; }
+.pill.sched   { border-color: rgba(232,192,56,.4); color: var(--yellow); }
+.pill.sched .dot { background: var(--yellow); }
+@keyframes blink { 0%,100%{opacity:1}50%{opacity:.2} }
+
+/* ── Body ── */
+.body { display: grid; grid-template-columns: 268px 1fr; overflow: hidden; }
+
+/* ── Sidebar ── */
+.sidebar {
+  background: var(--surf); border-right: 1px solid var(--border);
+  padding: 20px 16px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 28px;
+}
+
+.sec-head {
+  font-size: 10px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--text3); padding-bottom: 10px; border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+/* ── Platform tabs ── */
+.platform-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+.ptab {
+  flex: 1; padding: 7px 0; border: 1px solid var(--border2); border-radius: var(--r);
+  background: transparent; font-family: var(--font); font-size: 12px; font-weight: 600;
+  letter-spacing: .06em; color: var(--text3); cursor: pointer; transition: all .15s;
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+}
+.ptab:hover { background: var(--surf2); color: var(--text2); }
+.ptab.active-yt { border-color: var(--accent-yt); color: var(--accent-yt); background: var(--accent-yt-d); }
+.ptab.active-tw { border-color: var(--accent-tw); color: var(--accent-tw); background: var(--accent-tw-d); }
+
+.ptab-icon { font-size: 14px; }
+
+/* ── Form ── */
+.field { margin-bottom: 10px; }
+.field label {
+  display: block; font-size: 11px; font-weight: 600; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text3); margin-bottom: 5px;
+}
+input[type=text], input[type=number], select {
+  width: 100%; background: var(--bg); border: 1px solid var(--border2);
+  color: var(--text); font-family: var(--font); font-size: 13px; font-weight: 400;
+  padding: 8px 10px; border-radius: var(--r); outline: none; transition: border-color .2s;
+}
+input[type=text]:focus, input[type=number]:focus, select:focus { border-color: var(--accent-yt); }
+input::placeholder { color: var(--text3); }
+select { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%237a8499'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
+select option { background: var(--surf2); }
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  font-family: var(--font); font-size: 12px; font-weight: 600; letter-spacing: .06em;
+  padding: 8px 14px; border: 1px solid var(--border2); border-radius: var(--r);
+  background: transparent; color: var(--text2); cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.btn:hover   { border-color: var(--text3); color: var(--text); background: var(--surf2); }
+.btn.primary { border-color: var(--accent-yt); color: var(--accent-yt); }
+.btn.primary:hover { background: var(--accent-yt-d); }
+.btn.primary-tw { border-color: var(--accent-tw); color: var(--accent-tw); }
+.btn.primary-tw:hover { background: var(--accent-tw-d); }
+.btn.full    { width: 100%; margin-top: 4px; }
+.btn.sm      { padding: 5px 10px; font-size: 11px; }
+.btn:disabled{ opacity: .4; cursor: not-allowed; }
+
+/* ── Toggle ── */
+.toggle-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r);
+  font-size: 12px; font-weight: 500; color: var(--text2); margin-bottom: 6px;
+}
+.toggle-row:last-child { margin-bottom: 0; }
+.switch { position: relative; width: 36px; height: 20px; cursor: pointer; flex-shrink: 0; }
+.switch input { display: none; }
+.sw-track { position: absolute; inset: 0; border-radius: 10px; background: var(--border2); transition: background .2s; }
+.sw-knob  { position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--text3); transition: all .2s; }
+.switch input:checked ~ .sw-track { background: var(--green-d); border: 1px solid rgba(34,217,138,.5); }
+.switch input:checked ~ .sw-knob  { left: 19px; background: var(--green); }
+
+.iv-row { display: flex; gap: 6px; align-items: center; }
+.iv-row input[type=number] { width: 68px; }
+.iv-label { font-size: 12px; font-weight: 500; color: var(--text2); flex: 1; }
+
+/* ── Sort ── */
+.sort-list { display: flex; flex-direction: column; gap: 4px; }
+.sort-opt {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; width: 100%;
+  background: transparent; border: 1px solid var(--border); border-radius: var(--r);
+  font-family: var(--font); font-size: 12px; font-weight: 500; color: var(--text3);
+  cursor: pointer; transition: all .15s; text-align: left;
+}
+.sort-opt:hover  { border-color: var(--border2); color: var(--text); background: var(--surf2); }
+.sort-opt.active { border-color: var(--accent-yt); color: var(--accent-yt); background: var(--accent-yt-d); }
+.sort-icon       { width: 16px; text-align: center; font-size: 12px; }
+
+/* ── Main ── */
+.main { display: flex; flex-direction: column; overflow: hidden; }
+
+.main-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 22px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  gap: 12px;
+}
+
+.bar-left { display: flex; align-items: center; gap: 16px; }
+
+.counter { display: flex; align-items: baseline; gap: 6px; }
+.counter-n {
+  font-family: var(--font-d); font-size: 32px; line-height: 1;
+  letter-spacing: .06em; color: var(--accent-yt); transition: color .3s;
+}
+.counter-n.zero { color: var(--text3); }
+.counter-label  { font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--text3); }
+
+/* ── Platform filter dropdown ── */
+.filter-dropdown {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px; border: 1px solid var(--border2); border-radius: var(--r);
+  background: var(--surf2); cursor: pointer; font-size: 12px; font-weight: 600;
+  color: var(--text2); transition: all .15s; white-space: nowrap;
+}
+.filter-dropdown:hover { border-color: var(--text3); color: var(--text); }
+.filter-dropdown select {
+  background: transparent; border: none; color: var(--text2); font-family: var(--font);
+  font-size: 12px; font-weight: 600; cursor: pointer; outline: none; padding: 0;
+  width: auto; background-image: none;
+}
+.filter-wrap { position: relative; }
+.filter-select {
+  padding: 6px 30px 6px 10px; border: 1px solid var(--border2); border-radius: var(--r);
+  background: var(--surf2); color: var(--text2); font-family: var(--font);
+  font-size: 12px; font-weight: 600; cursor: pointer; outline: none; transition: all .15s;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%237a8499'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 8px center; appearance: none;
+  width: auto; min-width: 130px;
+}
+.filter-select:focus { border-color: var(--border2); }
+.filter-select option { background: var(--surf2); }
+
+.bar-right { display: flex; align-items: center; gap: 8px; }
+.bar-sub { font-size: 11px; color: var(--text3); font-weight: 400; }
+
+.refresh-btn svg { transition: transform .5s; }
+.refresh-btn.spinning svg { animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Progress bar ── */
+#prog {
+  position: fixed; top: 0; left: 0; height: 2px; width: 0%;
+  background: linear-gradient(90deg, var(--accent-yt), var(--orange));
+  transition: width .35s ease; z-index: 9999; border-radius: 0 2px 2px 0;
+}
+
+/* ── Scroll ── */
+.scroll { flex: 1; overflow-y: auto; padding: 16px 22px; }
+#list   { display: flex; flex-direction: column; gap: 6px; }
+
+/* ── Card ── */
+.card {
+  display: grid; grid-template-columns: 52px 1fr auto;
+  align-items: stretch;
+  background: var(--surf); border: 1px solid var(--border); border-radius: var(--r);
+  overflow: hidden; cursor: grab; transition: border-color .2s, background .15s;
+  animation: cardIn .18s ease both;
+}
+@keyframes cardIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:none} }
+
+.card:hover       { border-color: var(--border2); background: var(--surf2); }
+.card.live-yt     { border-color: rgba(232,60,66,.35); background: linear-gradient(90deg, rgba(232,60,66,.06), var(--surf) 50%); }
+.card.live-tw     { border-color: rgba(145,70,255,.35); background: linear-gradient(90deg, rgba(145,70,255,.07), var(--surf) 50%); }
+.card.upcoming    { border-color: rgba(232,192,56,.35); background: linear-gradient(90deg, rgba(232,192,56,.06), var(--surf) 50%); }
+.card.upcoming .indicator { background: var(--yellow); box-shadow: 0 0 5px var(--yellow); animation: none; }
+.card.dragging    { opacity: .3; cursor: grabbing; }
+.card.drag-over   { border-color: var(--orange) !important; }
+
+/* gutter / avatar */
+.card-gutter {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  border-right: 1px solid var(--border); flex-shrink: 0; overflow: hidden;
+}
+.card-avatar {
+  width: 52px; height: 52px; object-fit: cover; display: block;
+  filter: brightness(.85);
+  transition: filter .2s;
+}
+.card:hover .card-avatar { filter: brightness(1); }
+.card-avatar-placeholder {
+  width: 52px; height: 52px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surf2); font-size: 18px; color: var(--muted);
+}
+.indicator {
+  position: absolute; bottom: 5px; right: 5px;
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--border2);
+  border: 1px solid var(--surf);
+  transition: background .3s, box-shadow .3s;
+}
+.card.live-yt .indicator {
+  background: var(--accent-yt); box-shadow: 0 0 6px var(--accent-yt);
+  animation: blink 1.4s infinite;
+}
+.card.live-tw .indicator {
+  background: var(--accent-tw); box-shadow: 0 0 6px var(--accent-tw);
+  animation: blink 1.4s infinite;
+}
+.platform-dot {
+  position: absolute; top: 3px; left: 3px;
+  font-size: 8px; font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; line-height: 1;
+  padding: 1px 3px; border-radius: 2px;
+}
+.card .platform-dot.yt { background: rgba(232,60,66,.85); color: #fff; }
+.card .platform-dot.tw { background: rgba(145,70,255,.85); color: #fff; }
+
+/* body */
+.card-body { padding: 11px 14px; min-width: 0; }
+
+.card-name {
+  font-size: 14px; font-weight: 600; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.card.live-yt .card-name,
+.card.live-tw .card-name { color: #fff; }
+
+.card-meta {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  margin-top: 4px; font-size: 12px; color: var(--text3); font-weight: 400;
+}
+.live-tag-yt  { color: var(--accent-yt); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; font-size: 11px; }
+.live-tag-tw  { color: var(--accent-tw); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; font-size: 11px; }
+.upcoming-tag { color: var(--yellow); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; font-size: 11px; }
+.countdown    { font-size: 11px; font-weight: 600; color: var(--yellow); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.stream-ttl   { color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; font-weight: 400; }
+.err-tag     { color: var(--yellow); font-size: 11px; }
+.dot-sep     { color: var(--border2); }
+.chk-time    { color: var(--text3); font-size: 11px; }
+.live-dur    { font-size: 11px; font-weight: 600; color: var(--green); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+
+/* actions */
+.card-actions {
+  display: flex; gap: 5px; padding: 0 12px; align-items: center;
+  opacity: 0; transition: opacity .15s; flex-shrink: 0;
+}
+.card:hover .card-actions { opacity: 1; }
+
+.ico-btn {
+  width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid var(--border2); border-radius: var(--r);
+  color: var(--text3); cursor: pointer; font-size: 13px; transition: all .15s;
+}
+.ico-btn:hover         { border-color: var(--text2);    color: var(--text);    }
+.ico-btn.del:hover     { border-color: var(--accent-yt); color: var(--accent-yt); }
+.ico-btn.copied        { border-color: var(--green); color: var(--green); }
+
+/* ── Copy button ── */
+.watch-row { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.watch-link {
+  color: var(--orange); text-decoration: none; font-size: 12px; font-weight: 500;
+}
+.watch-link:hover { text-decoration: underline; }
+.copy-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 7px; border: 1px solid var(--border2); border-radius: 3px;
+  background: transparent; color: var(--text3); font-family: var(--font);
+  font-size: 10px; font-weight: 600; letter-spacing: .06em; cursor: pointer;
+  transition: all .15s;
+}
+.copy-btn:hover  { border-color: var(--text3); color: var(--text); }
+.copy-btn.copied { border-color: var(--green); color: var(--green); }
+
+/* ── Empty ── */
+.empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 80px 0; color: var(--text3); text-align: center;
+}
+.empty-word { font-family: var(--font-d); font-size: 52px; letter-spacing: .12em; color: var(--border2); }
+.empty p    { font-size: 12px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--text3); }
+
+/* ── Modal ── */
+.modal-bg {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.8); z-index: 8000;
+  align-items: center; justify-content: center;
+}
+.modal-bg.open { display: flex; }
+.modal {
+  background: var(--surf2); border: 1px solid var(--border2); border-radius: var(--r);
+  padding: 28px 24px; width: 340px; display: flex; flex-direction: column; gap: 18px;
+}
+.modal h3 { font-family: var(--font-d); font-size: 22px; letter-spacing: .08em; color: var(--text); }
+.modal-foot { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ── Toasts ── */
+#toasts {
+  position: fixed; bottom: 18px; right: 18px;
+  display: flex; flex-direction: column; gap: 6px; z-index: 9998;
+}
+.toast {
+  padding: 9px 14px; background: var(--surf2); border: 1px solid var(--border2); border-radius: var(--r);
+  font-size: 12px; font-weight: 500; color: var(--text); animation: toastIn .18s ease; max-width: 300px;
+}
+.toast.err { border-color: var(--accent-yt); color: var(--accent-yt); }
+.toast.ok  { border-color: var(--green); color: var(--green); }
+.toast.inf { border-color: var(--text3); }
+@keyframes toastIn { from{transform:translateX(10px);opacity:0} to{transform:none;opacity:1} }
+
+
+/* ── Download manager ── */
+.dl-drawer {
+  position: fixed; right: 0; top: 54px; bottom: 0;
+  width: 340px; background: var(--surf); border-left: 1px solid var(--border);
+  display: flex; flex-direction: column; z-index: 500;
+  transform: translateX(100%); transition: transform .25s ease;
+}
+.dl-drawer.open { transform: translateX(0); }
+
+.dl-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.dl-header-title {
+  font-size: 11px; font-weight: 700; letter-spacing: .16em;
+  text-transform: uppercase; color: var(--text2);
+  display: flex; align-items: center; gap: 8px;
+}
+.dl-badge {
+  background: var(--accent-yt); color: #fff;
+  font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px;
+  display: none;
+}
+.dl-badge.visible { display: inline; }
+
+.dl-list { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+
+.dl-item {
+  background: var(--surf2); border: 1px solid var(--border2); border-radius: var(--r);
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;
+}
+.dl-item.done   { border-color: rgba(34,217,138,.3); }
+.dl-item.error  { border-color: rgba(232,60,66,.3); }
+.dl-item-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dl-item-name { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.dl-item-status {
+  font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+  flex-shrink: 0;
+}
+.dl-item-status.starting  { color: var(--text3); }
+.dl-item-status.downloading { color: var(--orange); }
+.dl-item-status.done      { color: var(--green); }
+.dl-item-status.error     { color: var(--accent-yt); }
+.dl-item-status.cancelled { color: var(--text3); }
+
+.dl-fragments { font-size: 10px; color: var(--orange); letter-spacing: .06em; }
+
+.dl-log {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 2px;
+  padding: 6px 8px; font-size: 10px; font-family: monospace; color: var(--text3);
+  max-height: 80px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+  display: none;
+}
+.dl-log.open { display: block; }
+
+.dl-files { display: flex; flex-direction: column; gap: 3px; margin-top: 2px; }
+.dl-file-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  font-size: 10px; color: var(--text3);
+}
+.dl-file-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.dl-file-size { flex-shrink: 0; color: var(--text3); }
+
+
+
+.dl-bar-wrap {
+  height: 3px; background: var(--border2); border-radius: 2px; overflow: hidden;
+}
+.dl-bar {
+  height: 100%; background: var(--orange); border-radius: 2px;
+  transition: width .4s ease;
+}
+.dl-item.done .dl-bar { background: var(--green); }
+
+.dl-item-actions { display: flex; gap: 6px; }
+.dl-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; padding: 40px 0; color: var(--text3); text-align: center;
+}
+.dl-empty-icon { font-size: 28px; }
+.dl-empty p { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+
+/* download trigger button on cards */
+.dl-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 7px; border: 1px solid var(--border2); border-radius: 3px;
+  background: transparent; color: var(--text3); font-family: var(--font);
+  font-size: 10px; font-weight: 600; letter-spacing: .06em; cursor: pointer;
+  transition: all .15s;
+}
+.dl-btn:hover { border-color: var(--orange); color: var(--orange); }
+
+/* dl toggle button in topbar */
+.dl-toggle-btn {
+  position: relative;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.dl-toggle-btn .dl-badge { position: absolute; top: -4px; right: -4px; padding: 1px 4px; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar       { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+/* ── Notification toast (live / download done) ── */
+.notif-toast {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 11px 14px; max-width: 320px;
+  background: var(--surf2); border: 1px solid var(--border2); border-radius: var(--r);
+  box-shadow: 0 4px 20px rgba(0,0,0,.4); animation: toastIn .2s ease;
+  cursor: pointer;
+}
+.notif-toast.live     { border-color: rgba(232,60,66,.4);  }
+.notif-toast.download { border-color: rgba(34,217,138,.35); }
+.notif-icon { font-size: 18px; flex-shrink: 0; line-height: 1.3; }
+.notif-body { min-width: 0; }
+.notif-title { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.notif-sub   { font-size: 11px; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── VOD modal ── */
+.vod-modal { width: 440px; }
+.plat-radio { display: flex; gap: 6px; margin-bottom: 4px; }
+.plat-radio label {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 7px 0; border: 1px solid var(--border2); border-radius: var(--r);
+  font-size: 12px; font-weight: 600; cursor: pointer; color: var(--text3); transition: all .15s;
+}
+.plat-radio input { display: none; }
+.plat-radio input:checked + label.yt { border-color: var(--accent-yt); color: var(--accent-yt); background: var(--accent-yt-d); }
+.plat-radio input:checked + label.tw { border-color: var(--accent-tw); color: var(--accent-tw); background: var(--accent-tw-d); }
+.plat-radio label:hover { background: var(--surf2); color: var(--text2); }
+</style>
+</head>
+<body>
+<div id="prog"></div>
+
+<div class="app">
+
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-name">STREAM MONITOR</div>
+      <div class="brand-sep">/</div>
+      <div class="brand-sub">YT + Twitch</div>
+    </div>
+    <div class="pills">
+      <div class="pill" id="pill-live"><div class="dot"></div><span id="pill-live-txt">0 LIVE</span></div>
+      <div class="pill" id="pill-upcoming"><div class="dot"></div><span id="pill-upcoming-txt">0 UPCOMING</span></div>
+      <div class="pill" id="pill-auto"><div class="dot"></div><span id="pill-auto-txt">AUTO OFF</span></div>
+      <button class="btn sm dl-toggle-btn" onclick="toggleDrawer()" title="Downloads">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Downloads
+        <span class="dl-badge" id="dl-badge">0</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="body">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+
+      <!-- Add Channel -->
+      <div>
+        <div class="sec-head">Add Channel</div>
+
+        <!-- Platform selector tabs -->
+        <div class="platform-tabs">
+          <button class="ptab active-yt" id="tab-yt" onclick="selectPlatform('youtube')">
+            <span class="ptab-icon">▶</span> YouTube
+          </button>
+          <button class="ptab" id="tab-tw" onclick="selectPlatform('twitch')">
+            <span class="ptab-icon">◈</span> Twitch
+          </button>
+        </div>
+
+        <div class="field">
+          <label id="q-label">Handle or Channel ID</label>
+          <input type="text" id="q-input" placeholder="@channelname"/>
+        </div>
+        <div class="field">
+          <label>Label (optional)</label>
+          <input type="text" id="l-input" placeholder="Auto-detected if blank"/>
+        </div>
+        <button class="btn primary full" id="add-btn" onclick="addChannel()">+ Add Channel</button>
+      </div>
+
+      <!-- Settings -->
+      <div>
+        <div class="sec-head">Settings</div>
+        <div class="toggle-row">
+          Auto-check
+          <label class="switch">
+            <input type="checkbox" id="auto-tog" onchange="toggleAuto(this.checked)"/>
+            <div class="sw-track"></div><div class="sw-knob"></div>
+          </label>
+        </div>
+        <div class="toggle-row">
+          <span class="iv-label">Interval (s)</span>
+          <div class="iv-row">
+            <input type="number" id="iv-input" value="90" min="30" step="10"/>
+            <button class="btn sm" onclick="setIv()">Set</button>
+          </div>
+        </div>
+        <div style="padding:4px 0;margin-bottom:6px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Download Location</div>
+          <div style="font-size:10px;color:var(--text3);margin-bottom:8px;line-height:1.6">
+            Downloads go to your host path set in <code style="background:var(--bg);padding:1px 4px;border-radius:2px;font-size:10px">docker-compose.yml</code> (left side of the downloads volume). Edit <code style="background:var(--bg);padding:1px 4px;border-radius:2px;font-size:10px">.env</code> to change it — no rebuild needed.
+          </div>
+          <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Current host path:</div>
+          <div id="dldir-hostpath" style="font-size:11px;font-weight:600;color:var(--text2);background:var(--bg);padding:5px 8px;border-radius:var(--r);border:1px solid var(--border);margin-bottom:8px;word-break:break-all">—</div>
+          <div style="font-size:10px;color:var(--text3);margin-bottom:4px">Subfolder (optional):</div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input type="text" id="dldir-input" placeholder="e.g. vods  or  recordings/twitch" style="flex:1"/>
+            <button class="btn sm" onclick="setDlDir()">Set</button>
+          </div>
+          <div id="dldir-status" style="font-size:10px;margin-top:5px;color:var(--text3)">Loading…</div>
+        </div>
+        <div class="toggle-row">
+          Notifications
+          <label class="switch">
+            <input type="checkbox" id="notif-tog" onchange="toggleNotifications(this.checked)"/>
+            <div class="sw-track"></div><div class="sw-knob"></div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Cookies -->
+      <div>
+        <div class="sec-head">YouTube Cookies</div>
+        <div style="padding:0 4px">
+          <div id="cookie-status" style="font-size:11px;color:var(--text3);margin-bottom:6px">Checking...</div>
+          <label class="btn full" style="cursor:pointer;text-align:center;display:block">
+            📂 Upload cookies.txt
+            <input type="file" id="cookie-file-input" accept=".txt" style="display:none" onchange="uploadCookies(this)">
+          </label>
+          <button class="btn full" style="margin-top:4px;color:#e55" onclick="deleteCookies()">✕ Remove cookies</button>
+        </div>
+      </div>
+
+      <!-- Sort -->
+      <div>
+        <div class="sec-head">Sort By</div>
+        <div class="sort-list">
+          <button class="sort-opt" data-k="name_asc"       onclick="sortBy('name_asc')"><span class="sort-icon">↑</span> Name A–Z</button>
+          <button class="sort-opt" data-k="name_desc"      onclick="sortBy('name_desc')"><span class="sort-icon">↓</span> Name Z–A</button>
+          <button class="sort-opt" data-k="live_first"     onclick="sortBy('live_first')"><span class="sort-icon">●</span> Live First</button>
+          <button class="sort-opt" data-k="platform"       onclick="sortBy('platform')"><span class="sort-icon">⊞</span> By Platform</button>
+          <button class="sort-opt" data-k="checked_newest" onclick="sortBy('checked_newest')"><span class="sort-icon">⏱</span> Last Checked</button>
+          <button class="sort-opt" onclick="toast('Drag any card to reorder manually','inf')"><span class="sort-icon">⠿</span> Manual Drag</button>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- Main -->
+    <main class="main">
+      <div class="main-bar">
+        <div class="bar-left">
+          <div style="display:flex;align-items:baseline;gap:18px">
+            <div>
+              <div class="counter">
+                <div class="counter-n zero" id="c-num">0</div>
+                <div class="counter-label">live now</div>
+              </div>
+            </div>
+            <div>
+              <div class="counter">
+                <div class="counter-n zero" id="c-upcoming-num" style="color:var(--yellow)">0</div>
+                <div class="counter-label">upcoming</div>
+              </div>
+            </div>
+          </div>
+          <div class="bar-sub" id="c-sub">never checked</div>
+
+          <!-- Platform filter dropdown -->
+          <select class="filter-select" id="platform-filter" onchange="render()">
+            <option value="all">All Platforms</option>
+            <option value="youtube">▶ YouTube only</option>
+            <option value="twitch">◈ Twitch only</option>
+          </select>
+        </div>
+
+        <div class="bar-right">
+          <button class="btn primary" onclick="openVodModal()" title="Download a YouTube or Twitch VOD by URL">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download VOD
+          </button>
+          <button class="btn refresh-btn" id="chk-btn" onclick="checkNow()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <polyline points="23 4 23 10 17 10"/>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
+            Check Now
+          </button>
+        </div>
+      </div>
+
+      <div class="scroll">
+        <div id="list"></div>
+      </div>
+    </main>
+
+  </div>
+</div>
+
+<!-- Download Drawer -->
+<div class="dl-drawer" id="dl-drawer">
+  <div class="dl-header">
+    <div class="dl-header-title">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Downloads
+      <span class="dl-badge" id="dl-badge2"></span>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button class="btn sm" onclick="clearAllDownloads()" title="Clear finished downloads">Clear All</button>
+      <button class="btn sm" onclick="toggleDrawer()">✕ Close</button>
+    </div>
+  </div>
+
+  <div class="dl-list" id="dl-list">
+    <div class="dl-empty">
+      <div class="dl-empty-icon">⬇</div>
+      <p>No downloads yet</p>
+      <p style="font-size:10px;margin-top:4px;color:var(--text3)">Click ⬇ on a live stream to start</p>
+    </div>
+  </div>
+</div>
+
+<!-- VOD Download Modal -->
+<div class="modal-bg" id="vod-modal">
+  <div class="modal vod-modal">
+    <h3>Download VOD</h3>
+    <div class="field">
+      <div class="plat-radio">
+        <input type="radio" name="vod-plat" id="vp-yt" value="youtube" checked>
+        <label for="vp-yt" class="yt">▶ YouTube</label>
+        <input type="radio" name="vod-plat" id="vp-tw" value="twitch">
+        <label for="vp-tw" class="tw">◈ Twitch</label>
+      </div>
+    </div>
+    <div class="field">
+      <label>Video / VOD URL</label>
+      <input type="text" id="vod-url" placeholder="youtube.com/watch?v=… or twitch.tv/videos/…"/>
+    </div>
+    <div class="field">
+      <label>Label (optional — channel name auto-detected)</label>
+      <input type="text" id="vod-name" placeholder="Leave blank to auto-detect"/>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeVodModal()">Cancel</button>
+      <button class="btn primary" id="vod-dl-btn" onclick="submitVodDownload()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Rename Modal -->
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <h3>Rename Channel</h3>
+    <div class="field">
+      <label>New Name</label>
+      <input type="text" id="rn-input" placeholder="Enter name…"/>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn primary" onclick="submitRename()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let channels    = [];
+let renameId    = null;
+let renamePlat  = null;
+let dragSrc     = null;
+let busy        = false;
+let addPlatform = 'youtube';
+
+// ── Init ───────────────────────────────────────────────────────────────────
+let channelPollTimer = null;
+
+function startChannelPolling(intervalMs) {
+  stopChannelPolling();
+  channelPollTimer = setInterval(syncChannels, intervalMs);
+}
+
+function stopChannelPolling() {
+  if (channelPollTimer) { clearInterval(channelPollTimer); channelPollTimer = null; }
+}
+
+(async () => {
+  await Promise.all([syncStatus(), syncChannels()]);
+  // Only auto-poll the UI if auto-check is on
+  const s = await call('/api/status');
+  if (s.auto_check) startChannelPolling(9000);
+  syncCookieStatus();
+})();
+
+// ── API ────────────────────────────────────────────────────────────────────
+async function call(path, method = 'GET', body = null) {
+  const o = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body !== null) o.body = JSON.stringify(body);
+  return (await fetch(path, o)).json();
+}
+
+function prog(pct) {
+  const el = document.getElementById('prog');
+  el.style.width = pct + '%';
+  if (pct >= 100) setTimeout(() => el.style.width = '0%', 420);
+}
+
+// ── Platform tab ───────────────────────────────────────────────────────────
+function selectPlatform(p) {
+  addPlatform = p;
+  document.getElementById('tab-yt').className = 'ptab' + (p === 'youtube' ? ' active-yt' : '');
+  document.getElementById('tab-tw').className = 'ptab' + (p === 'twitch'  ? ' active-tw' : '');
+  const addBtn = document.getElementById('add-btn');
+  addBtn.className = 'btn full ' + (p === 'twitch' ? 'primary-tw' : 'primary');
+  document.getElementById('q-label').textContent = p === 'twitch'
+    ? 'Twitch username or URL' : 'Handle, Channel ID, or URL';
+  document.getElementById('q-input').placeholder = p === 'twitch'
+    ? 'username or twitch.tv/…' : '@channelname';
+}
+
+// ── Status ─────────────────────────────────────────────────────────────────
+async function syncStatus() {
+  const s   = await call('/api/status');
+  const tog = document.getElementById('auto-tog');
+  const pil = document.getElementById('pill-auto');
+  const ptx = document.getElementById('pill-auto-txt');
+  tog.checked = s.auto_check;
+  pil.classList.toggle('on', s.auto_check);
+  ptx.textContent = s.auto_check ? 'AUTO ON' : 'AUTO OFF';
+  document.getElementById('iv-input').value = s.interval;
+  const dld = document.getElementById('dldir-input');
+  const dls = document.getElementById('dldir-status');
+  const dlh = document.getElementById('dldir-hostpath');
+  if (s.download_base && dlh) {
+    // Show the container base path (maps to the host path in docker-compose)
+    dlh.textContent = s.download_base;
+  }
+  if (dld && s.download_dir) {
+    // Show the subfolder relative to base (empty = base itself)
+    const base = s.download_base || '';
+    const sub  = s.download_dir.startsWith(base)
+                   ? s.download_dir.slice(base.length).replace(/^\/+/, '')
+                   : s.download_dir;
+    dld.value = sub;
+    dls.textContent = sub ? ('📁 subdir: ' + sub) : '📁 saving directly to host path';
+    dls.style.color = 'var(--text3)';
+  }
+  if (s.last_global_check)
+    document.getElementById('c-sub').textContent = 'last check: ' + ago(s.last_global_check);
+}
+
+async function syncCookieStatus() {
+  const el = document.getElementById('cookie-status');
+  if (!el) return;
+  try {
+    const r = await call('/api/cookies');
+    if (r.exists) {
+      const kb = (r.size / 1024).toFixed(1);
+      el.textContent = '✓ cookies.txt loaded (' + kb + ' KB)';
+      el.style.color = 'var(--green)';
+    } else {
+      el.textContent = '✗ No cookies — members streams may fail';
+      el.style.color = 'var(--text3)';
+    }
+  } catch(e) {
+    el.textContent = 'Could not check cookie status';
+  }
+}
+
+async function uploadCookies(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const text = await file.text();
+  const res = await fetch('/api/cookies', {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: text,
+  }).then(r => r.json());
+  if (res.error) { toast(res.error, 'err'); return; }
+  toast('cookies.txt uploaded ✓', 'ok');
+  syncCookieStatus();
+  input.value = '';
+}
+
+async function deleteCookies() {
+  await call('/api/cookies', 'DELETE');
+  toast('Cookies removed');
+  syncCookieStatus();
+}
+
+// ── Channels ───────────────────────────────────────────────────────────────
+async function syncChannels() {
+  channels = await call('/api/channels');
+  render();
+}
+
+function render() {
+  const filter  = document.getElementById('platform-filter').value;
+  // Filter using explicit check — covers channels missing the platform field
+  const visible = filter === 'all'
+    ? channels
+    : channels.filter(c => (c.platform || 'youtube') === filter);
+
+  // Count live and upcoming from full channel list
+  const liveAll     = channels.filter(c => c.last_status && c.last_status.is_live).length;
+  const upcomingAll = channels.filter(c => c.last_status && !c.last_status.is_live && c.last_status.is_upcoming).length;
+
+  const cn = document.getElementById('c-num');
+  cn.textContent = liveAll;
+  cn.classList.toggle('zero', liveAll === 0);
+
+  const cup = document.getElementById('c-upcoming-num');
+  if (cup) { cup.textContent = upcomingAll; cup.classList.toggle('zero', upcomingAll === 0); }
+
+  const lp = document.getElementById('pill-live');
+  document.getElementById('pill-live-txt').textContent = liveAll + ' LIVE';
+  lp.classList.toggle('hot', liveAll > 0);
+
+  const up = document.getElementById('pill-upcoming');
+  if (up) {
+    document.getElementById('pill-upcoming-txt').textContent = upcomingAll + ' UPCOMING';
+    up.classList.toggle('sched', upcomingAll > 0);
+  }
+
+  const el = document.getElementById('list');
+
+  if (!channels.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-word">IDLE</div><p>Add a channel to start monitoring</p></div>`;
+    return;
+  }
+
+  if (!visible.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-word">IDLE</div><p>No ${filter} channels added yet</p></div>`;
+    return;
+  }
+
+  // Sort: live first, then upcoming, then offline — stable (preserves manual order within groups)
+  const sorted = visible.slice().sort((a, b) => {
+    const rank = c => {
+      if (c.last_status && c.last_status.is_live)     return 0;
+      if (c.last_status && c.last_status.is_upcoming) return 1;
+      return 2;
+    };
+    return rank(a) - rank(b);
+  });
+
+  // Build cards — use data-ci (channel index in full array) for all lookups
+  const cards = sorted.map(ch => {
+    const ci     = channels.indexOf(ch);   // index in FULL channels array
+    const plat   = ch.platform || 'youtube';
+    const isLive = ch.last_status && ch.last_status.is_live;
+    const vid    = ch.last_status && ch.last_status.video_id;
+    const err    = ch.last_status && ch.last_status.error;
+    const url    = (ch.last_status && ch.last_status.url)
+                 || (vid ? 'https://youtube.com/watch?v=' + vid
+                         : (plat === 'twitch' ? 'https://twitch.tv/' + ch.channel_id : ''));
+    const chk    = ch.last_checked ? ago(ch.last_checked) : 'never';
+    const isUpcoming  = !isLive && ch.last_status && ch.last_status.is_upcoming;
+    const scheduledAt = isUpcoming && ch.last_status.scheduled_at ? ch.last_status.scheduled_at : null;
+    const liveClass   = isLive ? (plat === 'twitch' ? 'live-tw' : 'live-yt') : (isUpcoming ? 'upcoming' : '');
+    const liveTag     = isLive
+      ? (plat === 'twitch' ? '<span class="live-tag-tw">◈ LIVE</span>' : '<span class="live-tag-yt">▶ LIVE</span>')
+      : isUpcoming
+        ? '<span class="upcoming-tag">⏰ UPCOMING</span>'
+        : '<span>offline</span>';
+    const avatarSrc = ch.avatar ? '/api/avatar?url=' + encodeURIComponent(ch.avatar) : '';
+
+    return '<div class="card ' + liveClass + '"'
+      + ' data-ci="' + ci + '" data-plat="' + plat + '" draggable="true"'
+      + ' ondragstart="ds(event,' + ci + ')" ondragover="dov(event)"'
+      + ' ondrop="dp(event,' + ci + ')" ondragend="de(event)">'
+
+      + '<div class="card-gutter">'
+      + (avatarSrc ? '<img class="card-avatar" src="' + avatarSrc + '" alt="" loading="lazy" onerror="imgErr(this)">' : '')
+      + '<div class="card-avatar-placeholder"' + (avatarSrc ? ' style="display:none"' : '') + '>'
+      + (plat === 'twitch' ? '◈' : '▶') + '</div>'
+      + '<div class="platform-dot ' + (plat === 'twitch' ? 'tw' : 'yt') + '">' + (plat === 'twitch' ? 'TW' : 'YT') + '</div>'
+      + '<div class="indicator"></div>'
+      + '</div>'
+
+      + '<div class="card-body">'
+      + '<div class="card-name" data-ci="' + ci + '"></div>'
+      + '<div class="card-meta">'
+      + liveTag
+      + (isLive && ch.last_status.started_at
+        ? '<span class="dot-sep">·</span><span class="live-dur" data-started="' + x(ch.last_status.started_at) + '">⏱ …</span>'
+        : '')
+      + (isUpcoming && scheduledAt
+        ? '<span class="dot-sep">·</span><span class="countdown" data-scheduled="' + x(scheduledAt) + '">⏰ …</span>'
+        : '')
+      + (isLive && url
+        ? '<span class="dot-sep">·</span><div class="watch-row">'
+          + '<a class="watch-link" href="' + x(url) + '" target="_blank">▶ Watch</a>'
+          + '<button class="copy-btn" data-url="' + x(url) + '" onclick="copyUrl(event,this.dataset.url,this)">'
+          + '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button>'
+          + '<button class="dl-btn" data-ci="' + ci + '" data-url="' + x(url) + '" data-plat="' + plat + '" onclick="startDownload(this)">'
+          + '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Record</button>'
+          + '</div>'
+        : '')
+      + (isUpcoming && url
+        ? '<span class="dot-sep">·</span><div class="watch-row">'
+          + '<a class="watch-link" href="' + x(url) + '" target="_blank">🔔 Reminder</a>'
+          + '<button class="copy-btn" data-url="' + x(url) + '" onclick="copyUrl(event,this.dataset.url,this)">'
+          + '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button>'
+          + '</div>'
+        : '')
+      + ((isLive || isUpcoming) && ch.last_status.title ? '<span class="dot-sep">·</span><span class="stream-ttl" data-ci="' + ci + '"></span>' : '')
+      + (err ? '<span class="dot-sep">·</span><span class="err-tag" data-ci-err="' + ci + '"></span>' : '')
+      + '<span class="dot-sep">·</span><span class="chk-time">' + chk + '</span>'
+      + '</div></div>'
+
+      + '<div class="card-actions">'
+      + '<button class="ico-btn" title="Rename" data-ci="' + ci + '" onclick="openModalByIdx(this)">✎</button>'
+      + '<button class="ico-btn del" title="Remove" data-ci="' + ci + '" onclick="rmByIdx(this)">✕</button>'
+      + '</div>'
+      + '</div>';
+  });
+
+  el.innerHTML = cards.join('');
+
+  // Initialise live duration spans
+  _initDurations();
+
+  // Set all Unicode/Japanese text safely via textContent
+  el.querySelectorAll('.card-name[data-ci]').forEach(node => {
+    const ch = channels[+node.dataset.ci];
+    if (ch) node.textContent = ch.name;
+  });
+  el.querySelectorAll('.stream-ttl[data-ci]').forEach(node => {
+    const ch = channels[+node.dataset.ci];
+    if (ch) node.textContent = (ch.last_status && ch.last_status.title) || '';
+  });
+  el.querySelectorAll('[data-ci-err]').forEach(node => {
+    const ch = channels[+node.dataset.ciErr];
+    if (ch) node.textContent = '⚠ ' + ((ch.last_status && ch.last_status.error) || '');
+  });
+}
+
+function imgErr(img) {
+  img.style.display = 'none';
+  var next = img.nextElementSibling;
+  if (next) next.style.display = 'flex';
+}
+
+// ── Card action helpers ────────────────────────────────────────────────────
+function openModalByIdx(btn) {
+  const ch = channels[+btn.dataset.ci];
+  if (ch) openModal(ch.channel_id, ch.platform || 'youtube', ch.name);
+}
+function rmByIdx(btn) {
+  const ch = channels[+btn.dataset.ci];
+  if (ch) rm(ch.channel_id, ch.platform || 'youtube', ch.name);
+}
+
+
+
+// ── Copy URL ───────────────────────────────────────────────────────────────
+function copyUrl(e, url, btn) {
+  e.preventDefault();
+  e.stopPropagation();
+  navigator.clipboard.writeText(url).then(() => {
+    btn.textContent = '✓ Copied';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy`;
+      btn.classList.remove('copied');
+    }, 2000);
+  });
+}
+
+// ── Add ────────────────────────────────────────────────────────────────────
+async function addChannel() {
+  const q = document.getElementById('q-input').value.trim();
+  const l = document.getElementById('l-input').value.trim();
+  if (!q) { toast('Enter a channel name or URL', 'err'); return; }
+  const btn = document.getElementById('add-btn');
+  btn.disabled = true; btn.textContent = 'Resolving…';
+  prog(35);
+  const res = await call('/api/channels', 'POST', { query: q, label: l, platform: addPlatform });
+  prog(100);
+  btn.disabled = false; btn.textContent = '+ Add Channel';
+  if (res.error) { toast(res.error, 'err'); return; }
+  document.getElementById('q-input').value = '';
+  document.getElementById('l-input').value = '';
+  toast('Added: ' + res.name, 'ok');
+  await syncChannels();
+}
+
+// ── Remove ─────────────────────────────────────────────────────────────────
+async function rm(id, plat, name) {
+  if (!confirm(`Remove "${name}"?`)) return;
+  await call(`/api/channels/${encodeURIComponent(id)}?platform=${plat}`, 'DELETE');
+  toast('Removed: ' + name);
+  await syncChannels();
+}
+
+// ── Check now ──────────────────────────────────────────────────────────────
+async function checkNow() {
+  if (busy) return;
+  busy = true;
+  const btn = document.getElementById('chk-btn');
+  btn.classList.add('spinning');
+  prog(15);
+  await call('/api/check', 'POST');
+  let t = 0;
+  const iv = setInterval(async () => {
+    t++; prog(Math.min(15 + t * 9, 92));
+    await syncChannels();
+    if (t >= 10) {
+      clearInterval(iv); prog(100);
+      btn.classList.remove('spinning');
+      busy = false;
+      await syncStatus();
+    }
+  }, 1200);
+}
+
+// ── Sort ───────────────────────────────────────────────────────────────────
+async function sortBy(k) {
+  document.querySelectorAll('.sort-opt').forEach(b => b.classList.remove('active'));
+  document.querySelector(`[data-k="${k}"]`)?.classList.add('active');
+  channels = await call('/api/channels/sort', 'POST', { key: k });
+  render();
+}
+
+// ── Settings ───────────────────────────────────────────────────────────────
+async function toggleAuto(v) {
+  await call('/api/settings', 'PATCH', { auto_check: v });
+  syncStatus();
+  if (v) {
+    startChannelPolling(9000);
+  } else {
+    stopChannelPolling();
+    toast('Auto-check off — page will no longer refresh', 'inf');
+  }
+}
+
+async function setIv() {
+  const v = parseInt(document.getElementById('iv-input').value);
+  const r = await call('/api/settings', 'PATCH', { interval: v });
+  if (r.error) { toast(r.error, 'err'); return; }
+  toast(`Interval → ${v}s`, 'ok');
+}
+
+// ── Rename modal ───────────────────────────────────────────────────────────
+function openModal(id, plat, name) {
+  renameId = id; renamePlat = plat;
+  document.getElementById('rn-input').value = name;
+  document.getElementById('modal').classList.add('open');
+  setTimeout(() => document.getElementById('rn-input').select(), 40);
+}
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+  renameId = renamePlat = null;
+}
+async function submitRename() {
+  const n = document.getElementById('rn-input').value.trim();
+  if (!n || !renameId) return;
+  const r = await call(`/api/channels/${encodeURIComponent(renameId)}/rename`, 'PATCH', { name: n, platform: renamePlat });
+  if (r.error) { toast(r.error, 'err'); return; }
+  toast(`Renamed → "${n}"`, 'ok');
+  closeModal();
+  await syncChannels();
+}
+
+// ── Drag ───────────────────────────────────────────────────────────────────
+function ds(e, i) {
+  dragSrc = i; e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+function dov(e) {
+  e.preventDefault();
+  document.querySelectorAll('.card').forEach(c => c.classList.remove('drag-over'));
+  e.currentTarget.closest('.card')?.classList.add('drag-over');
+}
+function dp(e, i) {
+  e.preventDefault();
+  if (dragSrc === null || dragSrc === i) return;
+  const moved = channels.splice(dragSrc, 1)[0];
+  channels.splice(i, 0, moved);
+  render();
+  call('/api/channels/reorder', 'POST', {
+    order: channels.map(c => `${c.platform || 'youtube'}:${c.channel_id}`)
+  });
+}
+function de(e) {
+  e.currentTarget.classList.remove('dragging');
+  document.querySelectorAll('.card').forEach(c => c.classList.remove('drag-over'));
+  dragSrc = null;
+}
+
+
+// ── Download manager ──────────────────────────────────────────────────────
+let dlPollTimer = null;
+let drawerOpen  = false;
+
+function toggleDrawer() {
+  drawerOpen = !drawerOpen;
+  document.getElementById('dl-drawer').classList.toggle('open', drawerOpen);
+  if (drawerOpen) syncDownloads();
+}
+
+function getPoToken() {
+  return (document.getElementById('potoken-input')?.value || '').trim();
+}
+
+async function startDownload(btn) {
+  const url          = btn.dataset.url;
+  const ci           = parseInt(btn.dataset.ci);
+  const plat         = btn.dataset.plat;
+  const ch           = channels[ci] || {};
+  const name         = ch.name || 'stream';
+  const stream_title = (ch.last_status && ch.last_status.title) || '';
+
+  btn.disabled = true; btn.textContent = 'Starting…';
+  const res = await call('/api/downloads', 'POST', { url, name, platform: plat, stream_title });
+  btn.disabled = false;
+  btn.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Record`;
+  if (res.error) { toast(res.error, 'err'); return; }
+  toast('Recording started: ' + name, 'ok');
+  if (!drawerOpen) toggleDrawer();
+  syncDownloads();
+  startDlPoll();
+}
+
+function startDlPoll() {
+  if (dlPollTimer) return;
+  dlPollTimer = setInterval(async () => {
+    const list = await call('/api/downloads');
+    renderDownloads(list);
+    const active = list.filter(d => d.status === 'downloading' || d.status === 'starting');
+    if (!active.length) { clearInterval(dlPollTimer); dlPollTimer = null; }
+  }, 2000);
+}
+
+async function syncDownloads() {
+  const list = await call('/api/downloads');
+  renderDownloads(list);
+  const active = list.filter(d => d.status === 'downloading' || d.status === 'starting');
+  if (active.length) startDlPoll();
+}
+
+function renderDownloads(list) {
+  const el     = document.getElementById('dl-list');
+  const badge1 = document.getElementById('dl-badge');
+  const badge2 = document.getElementById('dl-badge2');
+  const active = list.filter(d => d.status === 'downloading' || d.status === 'starting').length;
+
+  [badge1, badge2].forEach(b => {
+    if (!b) return;
+    b.textContent = active;
+    b.classList.toggle('visible', active > 0);
+  });
+
+  if (!list.length) {
+    el.innerHTML = `<div class="dl-empty">
+      <div class="dl-empty-icon">⬇</div>
+      <p>No downloads yet</p>
+      <p style="font-size:10px;margin-top:4px;color:var(--text3)">Click Record on a live stream</p>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = list.slice().reverse().map(d => {
+    const pct        = Math.round(d.progress || 0);
+    const frags      = d.fragments || 0;
+    const totalFrags = d.total_fragments || 0;
+    const isActive   = d.status === 'downloading' || d.status === 'starting';
+    const typeTag    = d.is_vod ? '<span style="font-size:9px;letter-spacing:.08em;opacity:.55;margin-left:4px">VOD</span>' : '';
+    const activeInfo = d.downloaded ? d.downloaded
+      : frags && totalFrags ? `${frags}/${totalFrags} frags`
+      : frags ? `${frags} frags`
+      : pct > 0 ? pct + '%' : '…';
+    const statusTxt = {
+      starting:    '…',
+      downloading: activeInfo,
+      done:        '✓ Done',
+      error:       '✗ Error',
+      cancelled:   'Cancelled',
+    }[d.status] || d.status;
+    const detailLine = isActive && (frags || d.downloaded)
+      ? `<div class="dl-fragments">▼ ${frags ? frags+(totalFrags?'/'+totalFrags:'')+' frags' : ''}${d.downloaded?(frags?' · ':'')+d.downloaded:''}${pct>0&&!frags?' · '+pct+'%':''}</div>` : '';
+    const barHtml = isActive
+      ? `<div class="dl-bar-wrap"><div class="dl-bar" style="width:${pct>0?pct:2}%;${pct===0?'opacity:0.3':''}"></div></div>`
+      : d.status === 'done' ? `<div class="dl-bar-wrap"><div class="dl-bar" style="width:100%"></div></div>` : '';
+
+    return `<div class="dl-item ${d.status}" id="dli-${d.id}">
+      <div class="dl-item-top">
+        <div class="dl-item-name" data-dl-name="${d.id}">${typeTag}</div>
+        <div class="dl-item-status ${d.status}">${statusTxt}</div>
+      </div>
+      ${detailLine}
+      ${barHtml}
+      ${d.error
+        ? `<div style="font-size:10px;color:var(--accent-yt);margin-top:2px">${x(d.error)}</div>` : ''}
+      <div class="dl-item-actions">
+        ${isActive ? `<button class="btn sm" onclick="toggleLog('${d.id}')">Log</button>` : ''}
+        ${isActive ? `<button class="btn sm" onclick="cancelDownload('${d.id}')">■ Stop</button>` : ''}
+        ${d.status === 'done' ? `<button class="btn sm" onclick="showFiles('${d.id}')">📂 Files</button>` : ''}
+        ${!isActive ? `<button class="btn sm" onclick="downloadRawLog('${d.id}')">📋 Full Log</button>` : ''}
+        ${!isActive ? `<button class="btn sm" onclick="removeDownload('${d.id}')">✕ Clear</button>` : ''}
+      </div>
+      <div class="dl-log" id="log-${d.id}"></div>
+      <div class="dl-files" id="files-${d.id}"></div>
+    </div>`;
+  }).join('');
+
+  // Set names via textContent (Japanese safe)
+  el.querySelectorAll('[data-dl-name]').forEach(node => {
+    const d = list.find(dl => dl.id === node.dataset.dlName);
+    if (d) node.textContent = d.name;
+  });
+
+  // Restore open log panels after re-render
+  openLogs.forEach(id => {
+    const logEl = document.getElementById('log-' + id);
+    if (logEl) {
+      logEl.classList.add('open');
+      refreshLog(id);
+    } else {
+      openLogs.delete(id);  // element gone, remove from set
+    }
+  });
+}
+
+const openLogs = new Set();  // track which log panels are open
+
+async function toggleLog(id) {
+  if (openLogs.has(id)) {
+    openLogs.delete(id);
+  } else {
+    openLogs.add(id);
+    await refreshLog(id);
+  }
+  const logEl = document.getElementById('log-' + id);
+  if (logEl) logEl.classList.toggle('open', openLogs.has(id));
+}
+
+async function refreshLog(id) {
+  const logEl = document.getElementById('log-' + id);
+  if (!logEl) return;
+  const res = await call('/api/downloads/' + id + '/log');
+  logEl.textContent = (res.log || []).join('\n');
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+async function showFiles(id) {
+  const filesEl = document.getElementById('files-' + id);
+  if (!filesEl) return;
+  if (filesEl.innerHTML) { filesEl.innerHTML = ''; return; } // toggle
+  const files = await call('/api/downloads/' + id + '/files');
+  if (!files.length) { filesEl.innerHTML = '<div style="font-size:10px;color:var(--text3)">No files found</div>'; return; }
+  filesEl.innerHTML = files.map(f => {
+    const kb = (f.size / 1024).toFixed(0);
+    const mb = f.size > 1048576 ? (f.size/1048576).toFixed(1) + ' MB' : kb + ' KB';
+    return `<div class="dl-file-row">
+      <span class="dl-file-name">${x(f.name)}</span>
+      <span class="dl-file-size">${mb}</span>
+      <button class="btn sm" onclick="saveFile('${id}','${x(f.name)}')">Save</button>
+    </div>`;
+  }).join('');
+}
+
+function saveFile(id, filename) {
+  window.location.href = '/api/downloads/' + id + '/file/' + encodeURIComponent(filename);
+}
+
+function downloadRawLog(id) {
+  window.open('/api/downloads/' + id + '/rawlog', '_blank');
+}
+
+async function cancelDownload(id) {
+  await call('/api/downloads/' + id, 'DELETE');
+  await syncDownloads();
+}
+
+async function clearAllDownloads() {
+  const list = await call('/api/downloads');
+  const inactive = list.filter(d => d.status !== 'downloading' && d.status !== 'starting');
+  await Promise.all(inactive.map(d => call('/api/downloads/' + d.id, 'DELETE')));
+  await syncDownloads();
+  toast('Cleared ' + inactive.length + ' finished download(s)');
+}
+
+async function removeDownload(id) {
+  await call('/api/downloads/' + id, 'DELETE');
+  await syncDownloads();
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+function toast(msg, type = '') {
+  const c = document.getElementById('toasts');
+  const t = document.createElement('div');
+  t.className = 'toast ' + type; t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function x(s) {
+  // Only escape chars unsafe in HTML attributes — never touch Unicode
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function ago(iso) {
+  const d = (Date.now() - new Date(iso)) / 1000;
+  if (d < 60)    return Math.floor(d) + 's ago';
+  if (d < 3600)  return Math.floor(d/60) + 'm ago';
+  if (d < 86400) return Math.floor(d/3600) + 'h ago';
+  return Math.floor(d/86400) + 'd ago';
+}
+
+// ── Live duration ticker ──────────────────────────────────────────────────
+let _durTimer = null;
+
+function _initDurations() {
+  // Kick off or restart the 1-second ticker whenever cards are (re)rendered
+  if (_durTimer) clearInterval(_durTimer);
+  _tickDurations();  // immediate first paint
+  _durTimer = setInterval(_tickDurations, 1000);
+}
+
+function _tickDurations() {
+  const now = Date.now();
+  // Live duration — counts up
+  document.querySelectorAll('.live-dur[data-started]').forEach(el => {
+    const started = Date.parse(el.dataset.started);
+    if (isNaN(started)) return;
+    el.textContent = '⏱ ' + _fmtDur(now - started);
+  });
+  // Countdown — counts down to scheduled time
+  document.querySelectorAll('.countdown[data-scheduled]').forEach(el => {
+    const sched = Date.parse(el.dataset.scheduled);
+    if (isNaN(sched)) return;
+    const diff = sched - now;
+    if (diff <= 0) {
+      el.textContent = '⏰ Starting…';
+    } else {
+      el.textContent = '⏰ in ' + _fmtCountdown(diff);
+    }
+  });
+}
+
+function _fmtCountdown(ms) {
+  const s   = Math.floor(ms / 1000);
+  const d   = Math.floor(s / 86400);
+  const h   = Math.floor((s % 86400) / 3600);
+  const m   = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (d > 0)  return d + 'd ' + h + 'h ' + String(m).padStart(2,'0') + 'm';
+  if (h > 0)  return h + 'h ' + String(m).padStart(2,'0') + 'm ' + String(sec).padStart(2,'0') + 's';
+  if (m > 0)  return m + 'm ' + String(sec).padStart(2,'0') + 's';
+  return sec + 's';
+}
+
+function _fmtDur(ms) {
+  const s   = Math.floor(ms / 1000);
+  const h   = Math.floor(s / 3600);
+  const m   = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0)
+    return h + ':' + String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
+  return m + ':' + String(sec).padStart(2,'0');
+}
+
+// ── Download directory ────────────────────────────────────────────────────
+async function setDlDir() {
+  const val = document.getElementById('dldir-input').value.trim();
+  const btn = event.target;
+  btn.disabled = true; btn.textContent = '…';
+  // Send subfolder name (empty = reset to base)
+  const r = await call('/api/settings', 'PATCH', { download_dir: val });
+  btn.disabled = false; btn.textContent = 'Set';
+  const st  = document.getElementById('dldir-status');
+  const dlh = document.getElementById('dldir-hostpath');
+  if (r.error) {
+    st.textContent = '✗ ' + r.error;
+    st.style.color = 'var(--accent-yt)';
+    toast(r.error, 'err');
+    return;
+  }
+  const base = r.download_base || '';
+  const sub  = r.download_dir && r.download_dir.startsWith(base)
+                 ? r.download_dir.slice(base.length).replace(/^\/+/, '')
+                 : (r.download_dir || '');
+  document.getElementById('dldir-input').value = sub;
+  st.textContent = sub ? ('✓ subdir: ' + sub) : '✓ saving directly to host path';
+  st.style.color = 'var(--green)';
+  if (dlh && base) dlh.textContent = base;
+  const displayPath = sub ? (base + '/' + sub) : base;
+  toast('Downloads → ' + displayPath, 'ok');
+}
+
+// ── Notifications ──────────────────────────────────────────────────────────
+let notifEnabled = false;
+let notifLastTs  = '';
+
+async function toggleNotifications(on) {
+  if (on) {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') {
+      document.getElementById('notif-tog').checked = false;
+      toast('Notifications blocked — please allow them in browser settings', 'err');
+      return;
+    }
+    notifEnabled = true;
+    toast('Notifications enabled', 'ok');
+    startNotifPoll();
+  } else {
+    notifEnabled = false;
+    stopNotifPoll();
+  }
+}
+
+let notifPollTimer = null;
+function startNotifPoll() {
+  if (notifPollTimer) return;
+  notifPollTimer = setInterval(pollNotifications, 5000);
+}
+function stopNotifPoll() {
+  if (notifPollTimer) { clearInterval(notifPollTimer); notifPollTimer = null; }
+}
+
+async function pollNotifications() {
+  if (!notifEnabled) return;
+  try {
+    const notifs = await call('/api/notifications' + (notifLastTs ? '?since=' + encodeURIComponent(notifLastTs) : ''));
+    if (!Array.isArray(notifs) || !notifs.length) return;
+    notifLastTs = notifs[notifs.length - 1].ts;
+    notifs.forEach(n => showNotif(n));
+  } catch(e) {}
+}
+
+function showNotif(n) {
+  const isLive = n.kind === 'live';
+  const isDone = n.kind === 'download_done' || n.kind === 'download_error';
+  // In-app toast (always shown)
+  const type = isLive ? 'err' : (isDone ? 'ok' : '');
+  toast(n.title + (n.body ? ' — ' + n.body : ''), type);
+  // Browser notification (if permission granted)
+  if (notifEnabled && Notification.permission === 'granted') {
+    const bn = new Notification(n.title, {
+      body: n.body || '',
+      icon: '/favicon.ico',
+      tag:  n.id,
+    });
+    if (n.url) bn.onclick = () => { window.open(n.url, '_blank'); bn.close(); };
+    setTimeout(() => bn.close(), 8000);
+  }
+}
+
+// ── VOD modal ──────────────────────────────────────────────────────────────
+function openVodModal() {
+  document.getElementById('vod-modal').classList.add('open');
+  setTimeout(() => document.getElementById('vod-url').focus(), 40);
+}
+function closeVodModal() {
+  document.getElementById('vod-modal').classList.remove('open');
+  document.getElementById('vod-url').value = '';
+  document.getElementById('vod-name').value = '';
+}
+async function submitVodDownload() {
+  const urlVal  = document.getElementById('vod-url').value.trim();
+  const nameVal = document.getElementById('vod-name').value.trim();
+  if (!urlVal) { toast('Enter a URL', 'err'); return; }
+  const plat = urlVal.includes('twitch.tv') ? 'twitch'
+             : (urlVal.includes('youtube.com') || urlVal.includes('youtu.be')) ? 'youtube'
+             : document.querySelector('input[name="vod-plat"]:checked').value;
+  const name = nameVal || (plat === 'twitch' ? 'Twitch VOD' : 'YouTube VOD');
+  const btn  = document.getElementById('vod-dl-btn');
+  btn.disabled = true; btn.textContent = 'Starting…';
+  const res = await call('/api/downloads', 'POST', { url: urlVal, name, platform: plat, is_vod: true });
+  btn.disabled = false;
+  btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download`;
+  if (res.error) { toast(res.error, 'err'); return; }
+  toast('VOD download started', 'ok');
+  closeVodModal();
+  if (!drawerOpen) toggleDrawer();
+  syncDownloads();
+  startDlPoll();
+}
+
+// ── Keyboard ───────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeModal(); closeVodModal(); }
+  if (e.key === 'Enter') {
+    if (document.getElementById('modal').classList.contains('open')) submitRename();
+    else if (document.activeElement?.id === 'q-input') addChannel();
+  }
+});
+</script>
+</body>
+</html>
