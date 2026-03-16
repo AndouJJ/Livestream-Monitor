@@ -921,7 +921,7 @@ function render() {
 
   // Count live and upcoming from full channel list
   const liveAll     = channels.filter(c => c.last_status && c.last_status.is_live).length;
-  const upcomingAll = channels.filter(c => c.last_status && !c.last_status.is_live && c.last_status.is_upcoming).length;
+  const upcomingAll = channels.filter(c => c.last_status && !c.last_status.is_live && (c.last_status.is_upcoming || c.last_status.is_waiting)).length;
 
   const cn = document.getElementById('c-num');
   cn.textContent = liveAll;
