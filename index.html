@@ -311,6 +311,7 @@ select option { background: var(--surf2); }
 .dot-sep     { color: var(--border2); }
 .chk-time    { color: var(--text3); font-size: 11px; }
 .live-dur    { font-size: 11px; font-weight: 600; color: var(--green); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.viewer-count { font-size: 11px; font-weight: 600; color: var(--text2); }
 
 /* actions */
 .card-actions {
@@ -921,7 +922,12 @@ function render() {
 
   // Count live and upcoming from full channel list
   const liveAll     = channels.filter(c => c.last_status && c.last_status.is_live).length;
-  const upcomingAll = channels.filter(c => c.last_status && !c.last_status.is_live && (c.last_status.is_upcoming || c.last_status.is_waiting)).length;
+  // Count upcoming: primary status + extras from upcoming_statuses
+  const upcomingAll = channels.reduce((n, c) => {
+    const primary = c.last_status && !c.last_status.is_live && (c.last_status.is_upcoming || c.last_status.is_waiting) ? 1 : 0;
+    const extras  = (c.upcoming_statuses || []).length;
+    return n + primary + extras;
+  }, 0);
 
   const cn = document.getElementById('c-num');
   cn.textContent = liveAll;
@@ -1011,9 +1017,15 @@ function render() {
       + (isLive && ch.last_status.started_at
         ? '<span class="dot-sep">·</span><span class="live-dur" data-started="' + x(ch.last_status.started_at) + '">⏱ …</span>'
         : '')
+      + (isLive && ch.last_status.viewer_count != null
+        ? '<span class="dot-sep">·</span><span class="viewer-count">👁 ' + fmtViewers(ch.last_status.viewer_count) + '</span>'
+        : '')
       + ((isUpcoming || isWaiting) && scheduledAt
         ? '<span class="dot-sep">·</span><span class="countdown" data-scheduled="' + x(scheduledAt) + '">⏰ …</span>'
           + '<span class="dot-sep">·</span><span class="sched-time" data-scheduled="' + x(scheduledAt) + '">…</span>'
+        : '')
+      + ((isUpcoming || isWaiting) && ch.last_status.viewer_count != null
+        ? '<span class="dot-sep">·</span><span class="viewer-count">🔔 ' + fmtViewers(ch.last_status.viewer_count) + ' waiting</span>'
         : '')
       + (isLive && url
         ? '<span class="dot-sep">·</span><div class="watch-row">'
@@ -1044,10 +1056,54 @@ function render() {
       + '</div>';
   });
 
-  el.innerHTML = cards.join('');
+  // Build extra upcoming cards inline after each channel's primary card
+  function _buildExtraCard(ch, ci, st, ei) {
+    const avatarSrc = ch.avatar ? '/api/avatar?url=' + encodeURIComponent(ch.avatar) : '';
+    const chk       = ch.last_checked ? ago(ch.last_checked) : 'never';
+    const stUrl     = st.url || '';
+    const sched     = st.scheduled_at || '';
+    const isWait    = !!st.is_waiting;
+    const tag       = isWait
+      ? '<span class="waiting-tag">⌛ Waiting to start…</span>'
+      : '<span class="upcoming-tag">⏰ UPCOMING</span>';
+    return '<div class="card upcoming" data-extra="1">'
+      + '<div class="card-gutter">'
+      + (avatarSrc ? '<img class="card-avatar" src="' + avatarSrc + '" alt="" loading="lazy" onerror="imgErr(this)">' : '')
+      + '<div class="card-avatar-placeholder"' + (avatarSrc ? ' style="display:none"' : '') + '>▶</div>'
+      + '<div class="platform-dot yt">YT</div>'
+      + '<div class="indicator"></div>'
+      + '</div>'
+      + '<div class="card-body">'
+      + '<div class="card-name" data-extra-ci="' + ci + '" data-extra-ei="' + ei + '"></div>'
+      + '<div class="card-meta">'
+      + tag
+      + (sched ? '<span class="dot-sep">·</span><span class="countdown" data-scheduled="' + x(sched) + '">⏰ …</span>'
+               + '<span class="dot-sep">·</span><span class="sched-time" data-scheduled="' + x(sched) + '">…</span>' : '')
+      + (stUrl ? '<span class="dot-sep">·</span><div class="watch-row">'
+        + '<a class="watch-link" href="' + x(stUrl) + '" target="_blank">🔔 Reminder</a>'
+        + '<button class="copy-btn" data-url="' + x(stUrl) + '" onclick="copyUrl(event,this.dataset.url,this)">'
+        + '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button>'
+        + '</div>' : '')
+      + (st.title ? '<span class="dot-sep">·</span><span class="stream-ttl" data-extra-ci="' + ci + '" data-extra-ei="' + ei + '"></span>' : '')
+      + '<span class="dot-sep">·</span><span class="chk-time">' + chk + '</span>'
+      + '</div></div>'
+      + '<div class="card-actions" style="opacity:0.4;pointer-events:none"></div>'
+      + '</div>';
+  }
 
-  // Initialise live duration spans
-  _initDurations();
+  // Interleave extra cards right after their channel's primary card
+  const allCards = [];
+  sorted.forEach(ch => {
+    const ci     = channels.indexOf(ch);
+    const card   = cards[sorted.indexOf(ch)];
+    allCards.push(card);
+    const extras = ch.upcoming_statuses || [];
+    extras.forEach((st, ei) => {
+      allCards.push(_buildExtraCard(ch, ci, st, ei));
+    });
+  });
+
+  el.innerHTML = allCards.join('');
 
   // Set all Unicode/Japanese text safely via textContent
   el.querySelectorAll('.card-name[data-ci]').forEach(node => {
@@ -1062,6 +1118,27 @@ function render() {
     const ch = channels[+node.dataset.ciErr];
     if (ch) node.textContent = '⚠ ' + ((ch.last_status && ch.last_status.error) || '');
   });
+  // Extra upcoming card names and titles
+  el.querySelectorAll('.card-name[data-extra-ci]').forEach(node => {
+    const ch = channels[+node.dataset.extraCi];
+    if (ch) node.textContent = ch.name;
+  });
+  el.querySelectorAll('.stream-ttl[data-extra-ci]').forEach(node => {
+    const ch = channels[+node.dataset.extraCi];
+    const ei = +node.dataset.extraEi;
+    const st = ch && ch.upcoming_statuses && ch.upcoming_statuses[ei];
+    if (st) node.textContent = st.title || '';
+  });
+
+  // Initialise timers after all text is set
+  _initDurations();
+}
+
+function fmtViewers(n) {
+  if (n == null) return '';
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000)    return (n / 1000).toFixed(1) + 'K';
+  return n.toLocaleString();
 }
 
 function imgErr(img) {

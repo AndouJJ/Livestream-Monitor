@@ -50,6 +50,29 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 
+# Cookies file path — defined early so scrapers can use it
+# (same value as COOKIES_FILE in the download manager, set via env var)
+_COOKIES_PATH = Path(os.environ.get("COOKIES_FILE", "cookies.txt"))
+
+def _make_session() -> requests.Session:
+    """
+    Build a requests.Session with cookies loaded from cookies.txt (Netscape format).
+    Used for watch-page scraping so YouTube serves full content instead of consent walls.
+    Falls back to a plain session if the file is missing or unparseable.
+    """
+    session = requests.Session()
+    session.headers.update(HEADERS)
+    if not (_COOKIES_PATH.exists() and _COOKIES_PATH.stat().st_size > 0):
+        return session
+    try:
+        from http.cookiejar import MozillaCookieJar
+        jar = MozillaCookieJar()
+        jar.load(str(_COOKIES_PATH), ignore_discard=True, ignore_expires=True)
+        session.cookies = jar  # type: ignore[assignment]
+    except Exception as e:
+        log.warning(f"[scrape] Could not load cookies for session: {e}")
+    return session
+
 # ─── Shared state ─────────────────────────────────────────────────────────────
 
 SETTINGS_FILE = Path("settings.json")
@@ -107,6 +130,9 @@ def load_channels() -> list:
 
 
 def save_channels():
+    upcoming = [c["name"] for c in state["channels"] if c.get("last_status", {}).get("is_upcoming") or c.get("last_status", {}).get("is_waiting")]
+    if upcoming:
+        log.info(f"[save] upcoming/waiting channels: {upcoming}")
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(state["channels"], f, indent=2, ensure_ascii=False)
 
@@ -116,8 +142,14 @@ def save_channels():
 FREE_CHAT_PATTERNS = [
     "free chat", "freechat",
     "フリーチャット", "ふりーちゃっと", "フリチャ",
-    "ぽたく集会所", "フリフリチャット", "メン限壁紙配布中",
+    "ぽたく集会所", "フリフリチャット",
     "🌙FreeしのみんChat🐾",
+    "🪐🪐🪐",
+    "stream schedule",
+    "壁紙配布中",
+    "チャットルーム",
+    "発売中",
+    "スケジュール",
 ]
 
 def _is_free_chat(title: str) -> bool:
@@ -234,6 +266,7 @@ def _base_status(is_live=False, is_upcoming=False, is_waiting=False, **kw) -> di
         "started_at":   kw.get("started_at"),
         "scheduled_at": kw.get("scheduled_at"),
         "error":        kw.get("error"),
+        "viewer_count": kw.get("viewer_count"),
     }
 
 
@@ -267,11 +300,86 @@ def _yt_parse_initial_data(html: str) -> dict:
         return {}
 
 
-def check_youtube_live(channel_id: str) -> dict:
+def _get_viewer_count(video_id: str, session=None) -> int | None:
+    """
+    Fetch the current concurrent viewer count for a live stream,
+    or waiting count for an upcoming stream.
+    Returns an integer or None if unavailable.
+    """
+    if not video_id:
+        return None
+    try:
+        if session is None:
+            session = _make_session()
+        r    = session.get(f"https://www.youtube.com/watch?v={video_id}",
+                           timeout=REQ_TIMEOUT)
+        html = r.text
+        if len(html) < 50000:
+            return None  # bot-detection wall
+
+        # 1. concurrentViewers — most reliable for live streams (integer string)
+        m = re.search(r'"concurrentViewers"\s*:\s*"(\d+)"', html)
+        if m:
+            return int(m.group(1))
+
+        # 2. viewCount runs format inside videoViewCountRenderer
+        # e.g. [{"text":"12,345"},{"text":" watching"}]
+        m = re.search(
+            r'"videoViewCountRenderer".*?"text"\s*:\s*"([\d,]+)".*?"text"\s*:\s*" (watching|waiting)"',
+            html, re.DOTALL
+        )
+        if m:
+            return int(m.group(1).replace(",", ""))
+
+        # 3. viewCount simpleText — "12,345 watching now" or "32 waiting"
+        m = re.search(r'"viewCount"\s*:\s*\{"simpleText"\s*:\s*"([\d,]+)\s+(watching|waiting)', html)
+        if m:
+            return int(m.group(1).replace(",", ""))
+
+        # 4. Scan all occurrences of watching/waiting near a number
+        # Look specifically within 200 chars of videoViewCountRenderer
+        idx = html.find('"videoViewCountRenderer"')
+        if idx != -1:
+            chunk = html[idx:idx+500]
+            log.info(f"[viewer_count] {video_id} renderer chunk: {chunk[:200]!r}")
+            m = re.search(r'"([\d,]+)"\s*\}\s*,\s*\{\s*"text"\s*:\s*" (watching|waiting)"', chunk)
+            if m:
+                return int(m.group(1).replace(",", ""))
+            # Also try simpleText within the renderer
+            m = re.search(r'"simpleText"\s*:\s*"([\d,]+)\s+(watching|waiting)', chunk)
+            if m:
+                return int(m.group(1).replace(",", ""))
+        else:
+            log.info(f"[viewer_count] {video_id}: no videoViewCountRenderer found")
+
+    except Exception:
+        pass
+    return None
+
+
+def _to_iso(val: str) -> str:
+    """
+    Normalise a schedule time value to an ISO 8601 string.
+    YouTube uses two formats:
+      - Unix timestamp string: "1742810400"
+      - ISO string: "2026-03-24T11:00:00+00:00"
+    Returns the ISO string, or the original value if conversion fails.
+    """
+    if not val:
+        return val
+    try:
+        if val.isdigit() or (val.lstrip("-").isdigit()):
+            # Unix timestamp
+            return datetime.fromtimestamp(int(val), tz=timezone.utc).isoformat()
+        # Already ISO — normalise Z suffix
+        return datetime.fromisoformat(val.replace("Z", "+00:00")).isoformat()
+    except Exception:
+        return val
     """Scrape YouTube /live page for live and upcoming stream status."""
     live_url = f"https://www.youtube.com/channel/{channel_id}/live"
     try:
-        r    = requests.get(live_url, headers=HEADERS, timeout=REQ_TIMEOUT)
+        session = _make_session()
+        r    = session.get(live_url, timeout=REQ_TIMEOUT)
         html = r.text
 
         upcoming_candidate = None
@@ -299,8 +407,353 @@ def check_youtube_live(channel_id: str) -> dict:
                             url=f"https://youtube.com/watch?v={video_id}" if video_id else None,
                             started_at=start_date or None,
                         )
-                    # isLiveBroadcast=false + future startDate = upcoming
-                    if start_date and upcoming_candidate is None:
+                    # isLiveBroadcast=false + startDate = upcoming (future) or waiting (recently past)
+                    # Skip if endDate is present — stream already ended
+                    if start_date and upcoming_candidate is None and not item.get("endDate"):
+                        try:
+                            sched = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+                            now   = datetime.now(timezone.utc)
+                            age   = (now - sched).total_seconds()
+                            if sched > now:
+                                log.info(f"[live-check] {channel_id} M1:JSON-LD upcoming title={title!r:.40} startDate={start_date} endDate=None")
+                                upcoming_candidate = _base_status(
+                                    is_upcoming=True, video_id=video_id, title=title,
+                                    url=f"https://youtube.com/watch?v={video_id}" if video_id else None,
+                                    scheduled_at=start_date,
+                                )
+                            elif 0 <= age <= 48 * 3600:
+                                log.info(f"[live-check] {channel_id} M1:JSON-LD waiting title={title!r:.40} startDate={start_date} age={age:.0f}s endDate=None")
+                                upcoming_candidate = _base_status(
+                                    is_waiting=True, video_id=video_id, title=title,
+                                    url=f"https://youtube.com/watch?v={video_id}" if video_id else None,
+                                    scheduled_at=start_date,
+                                )
+                        except Exception:
+                            pass
+            except (json.JSONDecodeError, AttributeError):
+                continue
+
+        # ── Method 2: ytInitialPlayerResponse (robust JSON parse) ────────
+        ipr = _yt_parse_initial_player(html)
+        if ipr:
+            vs  = ipr.get("videoDetails", {})
+            mf  = ipr.get("microformat", {}).get("playerMicroformatRenderer", {})
+            lbd = mf.get("liveBroadcastDetails", {})
+            title    = vs.get("title") or ""
+            video_id = vs.get("videoId")
+            url_v    = f"https://youtube.com/watch?v={video_id}" if video_id else None
+
+            if vs.get("isLive") and not _is_free_chat(title):
+                return _base_status(
+                    is_live=True, video_id=video_id, title=title, url=url_v,
+                    started_at=_find_live_start_time(html, ipr, video_id) or None,
+                )
+            # isUpcoming is a boolean YouTube sets explicitly on scheduled streams
+            # Only trust if endTimestamp absent (not a completed stream)
+            # Note: free-chat titled videos are skipped but we still fall through
+            # to RSS so members-only streams behind a wallpaper post are found.
+            if not _is_free_chat(title) and vs.get("isUpcoming") and not lbd.get("endTimestamp") and upcoming_candidate is None:
+                    # startTimestamp may be in liveBroadcastDetails, or
+                    # scheduledStartTime may be in videoDetails or microformat
+                    sched = _to_iso(lbd.get("startTimestamp")
+                             or vs.get("scheduledStartTime")
+                             or mf.get("liveBroadcastDetails", {}).get("startTimestamp"))
+                    # Also scan raw HTML for scheduledStartTime as last resort
+                    if not sched and '"scheduledStartTime"' in html:
+                        m_sched = re.search(r'"scheduledStartTime"\s*:\s*"([^"]+)"', html)
+                        if m_sched:
+                            sched = _to_iso(m_sched.group(1))
+                    # Even with no schedule time, isUpcoming=True is authoritative
+                    # — mark as upcoming and let the UI show no countdown
+                    if sched:
+                        try:
+                            t   = datetime.fromisoformat(sched.replace("Z", "+00:00"))
+                            now = datetime.now(timezone.utc)
+                            age = (now - t).total_seconds()
+                            if t > now:
+                                upcoming_candidate = _base_status(
+                                    is_upcoming=True, video_id=video_id,
+                                    title=title, url=url_v, scheduled_at=sched,
+                                )
+                            elif 0 <= age <= 48 * 3600:
+                                upcoming_candidate = _base_status(
+                                    is_waiting=True, video_id=video_id,
+                                    title=title, url=url_v, scheduled_at=sched,
+                                )
+                            else:
+                                # Sched too old — still upcoming per YouTube flag
+                                upcoming_candidate = _base_status(
+                                    is_upcoming=True, video_id=video_id,
+                                    title=title, url=url_v, scheduled_at=sched,
+                                )
+                        except Exception:
+                            upcoming_candidate = _base_status(
+                                is_upcoming=True, video_id=video_id,
+                                title=title, url=url_v, scheduled_at=sched,
+                            )
+                    else:
+                        log.info(f"[live-check] {channel_id} M2: isUpcoming=True, no sched — marking upcoming anyway")
+                        upcoming_candidate = _base_status(
+                            is_upcoming=True, video_id=video_id,
+                            title=title, url=url_v, scheduled_at=None,
+                        )
+
+        # ── Method 4: raw "isUpcoming":true scan ─────────────────────────
+        # Last resort: YouTube sometimes embeds isUpcoming as a plain bool
+        # in various JSON blobs. If we see it, scrape startTimestamp nearby.
+        if upcoming_candidate is None and (
+            '"isUpcoming":true' in html or '"isUpcoming": true' in html
+        ):
+            # Find startTimestamp within 2000 chars of isUpcoming
+            for pat in ('"isUpcoming":true', '"isUpcoming": true'):
+                idx = html.find(pat)
+                if idx == -1:
+                    continue
+                chunk = html[max(0, idx - 500):idx + 1500]
+                ts_m = re.search(r'"startTimestamp"\s*:\s*"([^"]+)"', chunk)
+                vid_m3 = re.search(r'"videoId"\s*:\s*"([\w-]{11})"', chunk)
+                if ts_m:
+                    sched_raw = ts_m.group(1)
+                    try:
+                        t   = datetime.fromisoformat(sched_raw.replace("Z", "+00:00"))
+                        now = datetime.now(timezone.utc)
+                        age = (now - t).total_seconds()
+                        if t > now or 0 <= age <= 48 * 3600:
+                            vid3   = vid_m3.group(1) if vid_m3 else None
+                            title3 = (ipr.get("videoDetails", {}).get("title") or "") if ipr else ""
+                            if not title3:
+                                og_m = re.search(
+                                    r'<meta[^>]+property="og:title"[^>]+content="([^"]+)"', html)
+                                if og_m:
+                                    import html as _hm3
+                                    title3 = _hm3.unescape(og_m.group(1))
+                            if not _is_free_chat(title3):
+                                _is_past = t <= now
+                                upcoming_candidate = _base_status(
+                                    is_upcoming=not _is_past, is_waiting=_is_past,
+                                    video_id=vid3, title=title3,
+                                    url=f"https://youtube.com/watch?v={vid3}" if vid3 else None,
+                                    scheduled_at=sched_raw,
+                                )
+                                break
+                    except Exception:
+                        pass
+
+        if upcoming_candidate:
+            log.info(
+                f"[live-check] YouTube {channel_id}: UPCOMING/WAITING "
+                f"{upcoming_candidate.get('title','')!r} @ {upcoming_candidate.get('scheduled_at','')} "
+                f"is_upcoming={upcoming_candidate.get('is_upcoming')} is_waiting={upcoming_candidate.get('is_waiting')}"
+            )
+            return upcoming_candidate
+
+        # ── Method 5: RSS feed fallback ───────────────────────────────────
+        # When /live doesn't redirect to the upcoming stream, probe the
+        # last few RSS entries directly for isUpcoming signals.
+        rss_tree = _fetch_rss(channel_id)
+        if rss_tree:
+            yt_ns   = "http://www.youtube.com/xml/schemas/2015"
+            entries = rss_tree.findall(f"{{{RSS_NS}}}entry")[:3]
+            log.info(f"[live-check] {channel_id} RSS fallback: checking {len(entries)} entries")
+            rss_session = _make_session()
+            for entry in entries:
+                vid_el = entry.find(f"{{{yt_ns}}}videoId")
+                if vid_el is None:
+                    continue
+                vid_id = vid_el.text
+                try:
+                    vr    = rss_session.get(f"https://www.youtube.com/watch?v={vid_id}",
+                                            timeout=REQ_TIMEOUT)
+                    vhtml = vr.text
+                    vipr = _yt_parse_initial_player(vhtml)
+                    if not vipr:
+                        log.info(f"[live-check] {channel_id} RSS skip {vid_id}: vipr parse failed (len={len(vhtml)})")
+                        continue
+                    vvs  = vipr.get("videoDetails", {})
+                    vmf  = vipr.get("microformat", {}).get("playerMicroformatRenderer", {})
+                    vlbd = vmf.get("liveBroadcastDetails", {})
+                    vtitle = vvs.get("title") or ""
+                    if _is_free_chat(vtitle):
+                        continue
+
+                    # Currently live
+                    if vvs.get("isLive"):
+                        return _base_status(
+                            is_live=True, video_id=vid_id, title=vtitle,
+                            url=f"https://youtube.com/watch?v={vid_id}",
+                            started_at=_find_live_start_time(vhtml, vipr, vid_id) or None,
+                        )
+
+                    # isUpcoming=true → scheduled, time may be future or recently past
+                    # Only trust if no endTimestamp (stream hasn't ended)
+                    if vvs.get("isUpcoming") and not vlbd.get("endTimestamp"):
+                        sched = _to_iso(vlbd.get("startTimestamp")
+                                 or vvs.get("scheduledStartTime"))
+                        if not sched and '"scheduledStartTime"' in vhtml:
+                            m_sched = re.search(r'"scheduledStartTime"\s*:\s*"([^"]+)"', vhtml)
+                            if m_sched:
+                                sched = _to_iso(m_sched.group(1))
+                        if sched:
+                            try:
+                                t   = datetime.fromisoformat(sched.replace("Z", "+00:00"))
+                                now = datetime.now(timezone.utc)
+                                age = (now - t).total_seconds()
+                                _is_past = t <= now and age <= 48 * 3600
+                                if t > now or _is_past:
+                                    log.info(
+                                        f"[live-check] YouTube {channel_id}: "
+                                        f"{'WAITING' if _is_past else 'UPCOMING'} (RSS) "
+                                        f"{vtitle!r} @ {sched}"
+                                    )
+                                    return _base_status(
+                                        is_upcoming=not _is_past, is_waiting=_is_past,
+                                        video_id=vid_id, title=vtitle,
+                                        url=f"https://youtube.com/watch?v={vid_id}",
+                                        scheduled_at=sched,
+                                    )
+                            except Exception:
+                                pass
+                        # isUpcoming=True but no sched time — trust it anyway
+                        log.info(f"[live-check] YouTube {channel_id}: UPCOMING (RSS/no-sched) {vtitle!r}")
+                        return _base_status(
+                            is_upcoming=True, video_id=vid_id, title=vtitle,
+                            url=f"https://youtube.com/watch?v={vid_id}",
+                            scheduled_at=None,
+                        )
+                    elif vvs.get("isUpcoming"):
+                        log.info(f"[live-check] {channel_id} RSS {vid_id}: isUpcoming but endTimestamp={vlbd.get('endTimestamp')!r}")
+                    else:
+                        log.info(f"[live-check] {channel_id} RSS {vid_id}: isLive={vvs.get('isLive')} isUpcoming={vvs.get('isUpcoming')} isLiveContent={vvs.get('isLiveContent')} title={vtitle!r:.40}")
+
+                    # upcomingEventData as final fallback
+                    if '"upcomingEventData"' in vhtml:
+                        idx = vhtml.find('"upcomingEventData"')
+                        chunk = vhtml[idx:idx + 500]
+                        ts_m = re.search(r'"startTime"\s*:\s*"(\d{9,11})"', chunk)
+                        if ts_m:
+                            start_ts = int(ts_m.group(1))
+                            now_ts   = int(datetime.now(timezone.utc).timestamp())
+                            age_s    = now_ts - start_ts
+                            if start_ts > now_ts or 0 <= age_s <= 48 * 3600:
+                                sched_iso = datetime.fromtimestamp(start_ts, tz=timezone.utc).isoformat()
+                                _is_past  = start_ts <= now_ts
+                                if not _is_free_chat(vtitle):
+                                    log.info(
+                                        f"[live-check] YouTube {channel_id}: "
+                                        f"{'WAITING' if _is_past else 'UPCOMING'} (RSS/upcomingEventData) "
+                                        f"{vtitle!r} @ {sched_iso}"
+                                    )
+                                    return _base_status(
+                                        is_upcoming=not _is_past, is_waiting=_is_past,
+                                        video_id=vid_id, title=vtitle,
+                                        url=f"https://youtube.com/watch?v={vid_id}",
+                                        scheduled_at=sched_iso,
+                                    )
+                except Exception:
+                    continue
+
+        log.info(f"[live-check] {channel_id} returning offline (no signals found)")
+        log.info(f"[live-check] {channel_id} returning offline (no signals found)")
+        return _base_status()
+
+    except requests.Timeout:
+        return _base_status(error="timeout")
+    except Exception as e:
+        log.warning(f"[live-check] YouTube error for {channel_id}: {e}")
+        return _base_status(error=str(e)[:80])
+
+def _find_live_start_time(html: str, ipr: dict, video_id: str = None) -> str:
+    """
+    Find a live stream's real start time.
+    Checks the /live page first, then fetches the watch page if video_id given.
+    Returns ISO string or empty string if not found.
+    """
+    if ipr:
+        mf  = ipr.get("microformat", {}).get("playerMicroformatRenderer", {})
+        lbd = mf.get("liveBroadcastDetails", {})
+
+        # 1. liveBroadcastDetails.startTimestamp
+        t = lbd.get("startTimestamp")
+        if t:
+            return _to_iso(t)
+
+        # 2. publishDate in microformat
+        t = mf.get("publishDate") or mf.get("uploadDate")
+        if t:
+            return _to_iso(t)
+
+    # 3. Raw scan of /live page HTML
+    if '"startTimestamp"' in html:
+        m = re.search(r'"startTimestamp"\s*:\s*"([^"]+)"', html)
+        if m:
+            return _to_iso(m.group(1))
+
+    if '"startDate"' in html:
+        m = re.search(r'"startDate"\s*:\s*"(\d{4}-[^"]+)"', html)
+        if m:
+            return _to_iso(m.group(1))
+
+    # 4. Fetch the watch page — startTimestamp is reliably there
+    if video_id:
+        try:
+            session = _make_session()
+            wr   = session.get(f"https://www.youtube.com/watch?v={video_id}",
+                               timeout=REQ_TIMEOUT)
+            wipr = _yt_parse_initial_player(wr.text)
+            if wipr:
+                wlbd = wipr.get("microformat", {}).get(
+                    "playerMicroformatRenderer", {}).get("liveBroadcastDetails", {})
+                t = wlbd.get("startTimestamp")
+                if t:
+                    return _to_iso(t)
+            # Raw scan of watch page
+            if '"startTimestamp"' in wr.text:
+                m = re.search(r'"startTimestamp"\s*:\s*"([^"]+)"', wr.text)
+                if m:
+                    return _to_iso(m.group(1))
+        except Exception:
+            pass
+
+    return ""
+
+
+
+def check_youtube_live(channel_id: str) -> dict:
+    """Scrape YouTube /live page for live and upcoming stream status."""
+    live_url = f"https://www.youtube.com/channel/{channel_id}/live"
+    try:
+        session = _make_session()
+        r    = session.get(live_url, timeout=REQ_TIMEOUT)
+        html = r.text
+
+        upcoming_candidate = None
+
+        # ── Method 1: JSON-LD BroadcastEvent ─────────────────────────────
+        for block in re.findall(
+            r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>',
+            html, re.DOTALL
+        ):
+            try:
+                data  = json.loads(block)
+                items = data if isinstance(data, list) else [data]
+                for item in items:
+                    if item.get("@type") != "BroadcastEvent":
+                        continue
+                    title      = item.get("name") or ""
+                    start_date = item.get("startDate") or ""
+                    vid_m      = re.search(r"(?:v=|youtu\.be/)([\w-]{11})", item.get("url", ""))
+                    video_id   = vid_m.group(1) if vid_m else None
+                    if _is_free_chat(title):
+                        continue
+                    if item.get("isLiveBroadcast"):
+                        return _base_status(
+                            is_live=True, video_id=video_id, title=title,
+                            url=f"https://youtube.com/watch?v={video_id}" if video_id else None,
+                            started_at=start_date or None,
+                        )
+                    # isLiveBroadcast=false + startDate = upcoming (future) or waiting (recently past)
+                    # Skip if endDate present — stream already ended
+                    if start_date and upcoming_candidate is None and not item.get("endDate"):
                         try:
                             sched = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
                             if sched > datetime.now(timezone.utc):
@@ -328,21 +781,49 @@ def check_youtube_live(channel_id: str) -> dict:
                 if vs.get("isLive"):
                     return _base_status(
                         is_live=True, video_id=video_id, title=title, url=url_v,
-                        started_at=lbd.get("startTimestamp"),
+                        started_at=_find_live_start_time(html, ipr, video_id) or None,
                     )
                 # isUpcoming is a boolean YouTube sets explicitly on scheduled streams
-                if vs.get("isUpcoming") and upcoming_candidate is None:
-                    sched = lbd.get("startTimestamp")
+                # Only trust if endTimestamp absent (not a completed stream)
+                if vs.get("isUpcoming") and not lbd.get("endTimestamp") and upcoming_candidate is None:
+                    sched = _to_iso(lbd.get("startTimestamp")
+                             or vs.get("scheduledStartTime")
+                             or mf.get("liveBroadcastDetails", {}).get("startTimestamp"))
+                    if not sched and '"scheduledStartTime"' in html:
+                        m_sched = re.search(r'"scheduledStartTime"\s*:\s*"([^"]+)"', html)
+                        if m_sched:
+                            sched = _to_iso(m_sched.group(1))
                     if sched:
                         try:
-                            t = datetime.fromisoformat(sched.replace("Z", "+00:00"))
-                            if t > datetime.now(timezone.utc):
+                            t   = datetime.fromisoformat(sched.replace("Z", "+00:00"))
+                            now = datetime.now(timezone.utc)
+                            age = (now - t).total_seconds()
+                            if t > now:
+                                upcoming_candidate = _base_status(
+                                    is_upcoming=True, video_id=video_id,
+                                    title=title, url=url_v, scheduled_at=sched,
+                                )
+                            elif 0 <= age <= 48 * 3600:
+                                upcoming_candidate = _base_status(
+                                    is_waiting=True, video_id=video_id,
+                                    title=title, url=url_v, scheduled_at=sched,
+                                )
+                            else:
                                 upcoming_candidate = _base_status(
                                     is_upcoming=True, video_id=video_id,
                                     title=title, url=url_v, scheduled_at=sched,
                                 )
                         except Exception:
-                            pass
+                            upcoming_candidate = _base_status(
+                                is_upcoming=True, video_id=video_id,
+                                title=title, url=url_v, scheduled_at=sched,
+                            )
+                    else:
+                        log.info(f"[live-check] {channel_id} M2: isUpcoming=True, no sched — marking upcoming anyway")
+                        upcoming_candidate = _base_status(
+                            is_upcoming=True, video_id=video_id,
+                            title=title, url=url_v, scheduled_at=None,
+                        )
 
         # ── Method 3: ytInitialData upcomingEventData ─────────────────────
         # upcomingEventData contains startTime as a unix timestamp string.
@@ -355,12 +836,12 @@ def check_youtube_live(channel_id: str) -> dict:
                 ts_m = re.search(r'"startTime"\s*:\s*"(\d{9,11})"', chunk)
                 if ts_m:
                     start_ts = int(ts_m.group(1))
-                    if start_ts > int(datetime.now(timezone.utc).timestamp()):
+                    now_ts   = int(datetime.now(timezone.utc).timestamp())
+                    age_secs = now_ts - start_ts
+                    if start_ts > now_ts or 0 <= age_secs <= 48 * 3600:
                         sched_iso = datetime.fromtimestamp(start_ts, tz=timezone.utc).isoformat()
-                        # Get videoId — first one found in page (the scheduled video)
                         vid_m2 = re.search(r'"videoId"\s*:\s*"([\w-]{11})"', html)
                         vid2   = vid_m2.group(1) if vid_m2 else None
-                        # Title from ytInitialPlayerResponse (already parsed) or og:title
                         title2 = ""
                         if ipr:
                             title2 = (ipr.get("videoDetails", {}).get("title") or "")
@@ -371,8 +852,10 @@ def check_youtube_live(channel_id: str) -> dict:
                                 import html as _hm2
                                 title2 = _hm2.unescape(og_m.group(1))
                         if not _is_free_chat(title2):
+                            _is_past = now_ts >= start_ts
                             upcoming_candidate = _base_status(
-                                is_upcoming=True, video_id=vid2, title=title2,
+                                is_upcoming=not _is_past, is_waiting=_is_past,
+                                video_id=vid2, title=title2 or None,
                                 url=f"https://youtube.com/watch?v={vid2}" if vid2 else None,
                                 scheduled_at=sched_iso,
                             )
@@ -423,29 +906,98 @@ def check_youtube_live(channel_id: str) -> dict:
             )
             return upcoming_candidate
 
+        # ── Method 6: membership tab scrape ───────────────────────────────
+        # For channels with a free-chat placeholder on /live, the actual
+        # members-only stream is only visible on the membership tab.
+        # Only attempt if /live page showed a free-chat (ipr had a video but
+        # it was filtered) — detected by checking if ipr parsed ok but no
+        # candidate was set.
+        if ipr and ipr.get("videoDetails", {}).get("videoId"):
+            # /live page had a video but it was skipped (free-chat or ended)
+            # Try the membership tab
+            try:
+                mem_url = f"https://www.youtube.com/channel/{channel_id}/membership"
+                mem_r   = session.get(mem_url, timeout=REQ_TIMEOUT)
+                mem_html = mem_r.text
+                if len(mem_html) > 50000:
+                    # Look for videoId of a live or upcoming stream in the page
+                    # Membership tab embeds video renderers with isLive signals
+                    mem_ipr = _yt_parse_initial_player(mem_html)
+                    if mem_ipr:
+                        mvs = mem_ipr.get("videoDetails", {})
+                        if mvs.get("videoId") and not _is_free_chat(mvs.get("title") or ""):
+                            mvid   = mvs.get("videoId")
+                            mtitle = mvs.get("title") or ""
+                            if mvs.get("isLive"):
+                                log.info(f"[live-check] YouTube {channel_id}: LIVE (membership tab) {mtitle!r}")
+                                return _base_status(
+                                    is_live=True, video_id=mvid, title=mtitle,
+                                    url=f"https://youtube.com/watch?v={mvid}",
+                                    started_at=_find_live_start_time(mem_html, mem_ipr, mvid) or None,
+                                )
+                    # Also scan for video IDs in the membership tab page
+                    # and probe each one for live/upcoming status
+                    mem_vids = list(dict.fromkeys(
+                        re.findall(r'"videoId"\s*:\s*"([\w-]{11})"', mem_html)
+                    ))[:5]
+                    mem_session = _make_session()
+                    for mvid in mem_vids:
+                        if mem_ipr and mvid == mem_ipr.get("videoDetails", {}).get("videoId"):
+                            continue  # already checked
+                        try:
+                            vr    = mem_session.get(f"https://www.youtube.com/watch?v={mvid}",
+                                                    timeout=REQ_TIMEOUT)
+                            vhtml = vr.text
+                            if len(vhtml) < 50000:
+                                continue
+                            vipr  = _yt_parse_initial_player(vhtml)
+                            vvs   = vipr.get("videoDetails", {}) if vipr else {}
+                            vtitle = vvs.get("title") or ""
+                            if _is_free_chat(vtitle):
+                                continue
+                            if vvs.get("isLive"):
+                                log.info(f"[live-check] YouTube {channel_id}: LIVE (membership/probe) {vtitle!r}")
+                                return _base_status(
+                                    is_live=True, video_id=mvid, title=vtitle,
+                                    url=f"https://youtube.com/watch?v={mvid}",
+                                    started_at=_find_live_start_time(vhtml, vipr, mvid) or None,
+                                )
+                        except Exception:
+                            continue
+            except Exception as e:
+                log.debug(f"[live-check] {channel_id} membership tab error: {e}")
+
         # ── Method 5: RSS feed fallback ───────────────────────────────────
-        # When /live doesn't redirect to the upcoming stream, probe the
-        # last few RSS entries directly for isUpcoming signals.
+        # When /live page is blocked by a free-chat placeholder or has no
+        # signals, probe the last few RSS entries for isLive or isUpcoming.
         rss_tree = _fetch_rss(channel_id)
         if rss_tree:
             yt_ns   = "http://www.youtube.com/xml/schemas/2015"
             entries = rss_tree.findall(f"{{{RSS_NS}}}entry")[:5]
+            log.info(f"[live-check] {channel_id} RSS fallback: checking {len(entries)} entries")
+            rss_session = _make_session()
             for entry in entries:
                 vid_el = entry.find(f"{{{yt_ns}}}videoId")
                 if vid_el is None:
                     continue
                 vid_id = vid_el.text
                 try:
-                    vr    = requests.get(f"https://www.youtube.com/watch?v={vid_id}",
-                                         headers=HEADERS, timeout=REQ_TIMEOUT)
+                    vr    = rss_session.get(f"https://www.youtube.com/watch?v={vid_id}",
+                                            timeout=REQ_TIMEOUT)
                     vhtml = vr.text
-                    # Quick guard — skip if no upcoming signals at all
-                    if ('"isUpcoming":true' not in vhtml and
-                            '"isUpcoming": true' not in vhtml and
-                            '"upcomingEventData"' not in vhtml):
+                    # Skip tiny pages (bot-detection wall)
+                    if len(vhtml) < 50000:
+                        continue
+                    # Quick guard — skip if no live/upcoming signals at all
+                    has_live     = '"isLive":true' in vhtml or '"isLive": true' in vhtml
+                    has_upcoming = ('"isUpcoming":true' in vhtml
+                                    or '"isUpcoming": true' in vhtml
+                                    or '"upcomingEventData"' in vhtml)
+                    if not has_live and not has_upcoming:
                         continue
                     vipr = _yt_parse_initial_player(vhtml)
                     if not vipr:
+                        log.info(f"[live-check] {channel_id} RSS skip {vid_id}: vipr parse failed (len={len(vhtml)})")
                         continue
                     vvs  = vipr.get("videoDetails", {})
                     vmf  = vipr.get("microformat", {}).get("playerMicroformatRenderer", {})
@@ -454,52 +1006,56 @@ def check_youtube_live(channel_id: str) -> dict:
                     if _is_free_chat(vtitle):
                         continue
                     if vvs.get("isLive"):
+                        log.info(f"[live-check] YouTube {channel_id}: LIVE (RSS) {vtitle!r}")
                         return _base_status(
                             is_live=True, video_id=vid_id, title=vtitle,
                             url=f"https://youtube.com/watch?v={vid_id}",
-                            started_at=vlbd.get("startTimestamp"),
+                            started_at=_find_live_start_time(vhtml, vipr, vid_id) or None,
                         )
-                    if vvs.get("isUpcoming"):
-                        sched = vlbd.get("startTimestamp")
+                    if vvs.get("isUpcoming") and not vlbd.get("endTimestamp"):
+                        sched = _to_iso(vlbd.get("startTimestamp")
+                                        or vvs.get("scheduledStartTime"))
+                        if not sched and '"scheduledStartTime"' in vhtml:
+                            m_sched = re.search(r'"scheduledStartTime"\s*:\s*"([^"]+)"', vhtml)
+                            if m_sched:
+                                sched = _to_iso(m_sched.group(1))
+                        if not sched and '"upcomingEventData"' in vhtml:
+                            idx   = vhtml.find('"upcomingEventData"')
+                            chunk = vhtml[idx:idx + 500]
+                            ts_m  = re.search(r'"startTime"\s*:\s*"(\d{9,11})"', chunk)
+                            if ts_m:
+                                sched = _to_iso(ts_m.group(1))
                         if sched:
                             try:
-                                t = datetime.fromisoformat(sched.replace("Z", "+00:00"))
-                                if t > datetime.now(timezone.utc):
+                                t   = datetime.fromisoformat(sched.replace("Z", "+00:00"))
+                                now = datetime.now(timezone.utc)
+                                age = (now - t).total_seconds()
+                                if t > now or 0 <= age <= 48 * 3600:
+                                    _is_past = t <= now
                                     log.info(
-                                        f"[live-check] YouTube {channel_id}: UPCOMING (RSS) "
+                                        f"[live-check] YouTube {channel_id}: "
+                                        f"{'WAITING' if _is_past else 'UPCOMING'} (RSS) "
                                         f"{vtitle!r} @ {sched}"
                                     )
                                     return _base_status(
-                                        is_upcoming=True, video_id=vid_id,
-                                        title=vtitle,
+                                        is_upcoming=not _is_past, is_waiting=_is_past,
+                                        video_id=vid_id, title=vtitle,
                                         url=f"https://youtube.com/watch?v={vid_id}",
                                         scheduled_at=sched,
                                     )
                             except Exception:
                                 pass
-                    # Also check upcomingEventData in the watch page
-                    if '"upcomingEventData"' in vhtml:
-                        idx = vhtml.find('"upcomingEventData"')
-                        chunk = vhtml[idx:idx + 500]
-                        ts_m = re.search(r'"startTime"\s*:\s*"(\d{9,11})"', chunk)
-                        if ts_m:
-                            start_ts = int(ts_m.group(1))
-                            if start_ts > int(datetime.now(timezone.utc).timestamp()):
-                                sched_iso = datetime.fromtimestamp(start_ts, tz=timezone.utc).isoformat()
-                                if not _is_free_chat(vtitle):
-                                    log.info(
-                                        f"[live-check] YouTube {channel_id}: UPCOMING (RSS/upcomingEventData) "
-                                        f"{vtitle!r} @ {sched_iso}"
-                                    )
-                                    return _base_status(
-                                        is_upcoming=True, video_id=vid_id,
-                                        title=vtitle,
-                                        url=f"https://youtube.com/watch?v={vid_id}",
-                                        scheduled_at=sched_iso,
-                                    )
+                        else:
+                            log.info(f"[live-check] YouTube {channel_id}: UPCOMING (RSS/no-sched) {vtitle!r}")
+                            return _base_status(
+                                is_upcoming=True, video_id=vid_id, title=vtitle,
+                                url=f"https://youtube.com/watch?v={vid_id}",
+                                scheduled_at=None,
+                            )
                 except Exception:
                     continue
 
+        log.info(f"[live-check] {channel_id} returning offline (no signals found)")
         return _base_status()
 
     except requests.Timeout:
@@ -606,6 +1162,184 @@ def resolve_channel(query: str, platform: str) -> tuple:
     return resolve_youtube(query)
 
 
+
+def _fetch_all_upcoming(channel_id: str) -> list:
+    """
+    Scan the RSS feed and /live page for ALL upcoming streams from this channel.
+    Returns a list of _base_status dicts with is_upcoming/is_waiting=True.
+    Only called for YouTube channels.
+    """
+    results = []
+    seen_ids = set()
+    now      = datetime.now(timezone.utc)
+    now_ts   = int(now.timestamp())
+
+    def _try_add(vid_id, title, sched_iso, is_past):
+        if vid_id in seen_ids or _is_free_chat(title or ""):
+            return
+        if not title:
+            # No title means we couldn't verify — skip to avoid free-chat placeholders
+            return
+        seen_ids.add(vid_id)
+        results.append(_base_status(
+            is_upcoming=not is_past, is_waiting=is_past,
+            video_id=vid_id, title=title or None,
+            url=f"https://youtube.com/watch?v={vid_id}",
+            scheduled_at=sched_iso,
+        ))
+
+    def _extract_sched(vhtml, vipr):
+        """Return (sched_iso, title) from a watch page."""
+        vvs  = vipr.get("videoDetails", {}) if vipr else {}
+        vmf  = vipr.get("microformat", {}).get("playerMicroformatRenderer", {}) if vipr else {}
+        vlbd = vmf.get("liveBroadcastDetails", {})
+        vtitle = vvs.get("title") or ""
+        if vlbd.get("endTimestamp"):
+            return None, vtitle  # stream ended
+        sched = _to_iso(vlbd.get("startTimestamp") or vvs.get("scheduledStartTime"))
+        if not sched and '"scheduledStartTime"' in vhtml:
+            m = re.search(r'"scheduledStartTime"\s*:\s*"([^"]+)"', vhtml)
+            if m:
+                sched = _to_iso(m.group(1))
+        if not sched and '"upcomingEventData"' in vhtml:
+            idx   = vhtml.find('"upcomingEventData"')
+            chunk = vhtml[idx:idx+500]
+            ts_m  = re.search(r'"startTime"\s*:\s*"(\d{9,11})"', chunk)
+            if ts_m:
+                sched = _to_iso(ts_m.group(1))
+        return sched, vtitle
+
+    try:
+        session  = _make_session()
+        rss_tree = _fetch_rss(channel_id)
+
+        # ── 1. Scan RSS entries ───────────────────────────────────────────
+        if rss_tree:
+            yt_ns   = "http://www.youtube.com/xml/schemas/2015"
+            entries = rss_tree.findall(f"{{{RSS_NS}}}entry")[:10]
+            for entry in entries:
+                vid_el = entry.find(f"{{{yt_ns}}}videoId")
+                if vid_el is None:
+                    continue
+                vid_id = vid_el.text
+                if vid_id in seen_ids:
+                    continue
+                try:
+                    time.sleep(0.5)  # space out requests to avoid rate limiting
+                    vr    = session.get(f"https://www.youtube.com/watch?v={vid_id}",
+                                        timeout=REQ_TIMEOUT)
+                    vhtml = vr.text
+                    # Skip if clearly not upcoming (no signals, or too small = blocked)
+                    if len(vhtml) < 50000:
+                        continue  # bot-detection wall
+                    has_sig = ('"isUpcoming":true' in vhtml
+                               or '"isUpcoming": true' in vhtml
+                               or '"upcomingEventData"' in vhtml)
+                    if not has_sig:
+                        continue
+                    vipr  = _yt_parse_initial_player(vhtml)
+                    vvs   = vipr.get("videoDetails", {}) if vipr else {}
+                    if vvs.get("isLive"):
+                        continue  # currently live, not upcoming
+                    sched, vtitle = _extract_sched(vhtml, vipr)
+                    if not sched:
+                        continue
+                    t   = datetime.fromisoformat(sched.replace("Z", "+00:00"))
+                    age = (now - t).total_seconds()
+                    if t > now or 0 <= age <= 48 * 3600:
+                        _try_add(vid_id, vtitle, sched, t <= now)
+                except Exception:
+                    continue
+
+        # ── 2. Also check /live page for members-only upcoming ────────────
+        # Members-only watch pages return a consent wall (tiny HTML),
+        # but the channel's /live page shows upcomingEventData for them.
+        try:
+            live_url  = f"https://www.youtube.com/channel/{channel_id}/live"
+            lr        = session.get(live_url, timeout=REQ_TIMEOUT)
+            lhtml     = lr.text
+            log.info(f"[fetch_all_upcoming] {channel_id} /live page: len={len(lhtml)} has_upcoming={'upcomingEventData' in lhtml}")
+            lipr      = _yt_parse_initial_player(lhtml)
+            lvs       = lipr.get("videoDetails", {}) if lipr else {}
+            vid_id_l  = lvs.get("videoId")
+            log.info(f"[fetch_all_upcoming] {channel_id} /live videoId={vid_id_l} isLive={lvs.get('isLive')} seen={vid_id_l in seen_ids}")
+            if vid_id_l and vid_id_l not in seen_ids and not lvs.get("isLive"):
+                sched, vtitle = _extract_sched(lhtml, lipr)
+                if not sched and '"upcomingEventData"' in lhtml:
+                    idx   = lhtml.find('"upcomingEventData"')
+                    chunk = lhtml[idx:idx+500]
+                    ts_m  = re.search(r'"startTime"\s*:\s*"(\d{9,11})"', chunk)
+                    if ts_m:
+                        sched = _to_iso(ts_m.group(1))
+                if sched:
+                    try:
+                        t   = datetime.fromisoformat(sched.replace("Z", "+00:00"))
+                        age = (now - t).total_seconds()
+                        if t > now or 0 <= age <= 48 * 3600:
+                            if not vtitle and lipr:
+                                og_m = re.search(
+                                    r'<meta[^>]+property="og:title"[^>]+content="([^"]+)"', lhtml)
+                                if og_m:
+                                    import html as _hm_l
+                                    vtitle = _hm_l.unescape(og_m.group(1))
+                            _try_add(vid_id_l, vtitle, sched, t <= now)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        # ── 3. Scan /streams tab for upcoming streams ─────────────────────
+        # When a channel is currently live, the /live page shows the active
+        # stream. The /streams tab lists all upcoming and recent streams.
+        try:
+            streams_url = f"https://www.youtube.com/channel/{channel_id}/streams"
+            sr          = session.get(streams_url, timeout=REQ_TIMEOUT)
+            shtml       = sr.text
+            log.info(f"[fetch_all_upcoming] {channel_id} /streams tab: len={len(shtml)}")
+            if len(shtml) > 50000:
+                # Extract all video IDs from the streams tab page
+                stream_vids = list(dict.fromkeys(
+                    re.findall(r'"videoId"\s*:\s*"([\w-]{11})"', shtml)
+                ))[:10]
+                log.info(f"[fetch_all_upcoming] {channel_id} /streams vids: {stream_vids}")
+                for svid in stream_vids:
+                    if svid in seen_ids:
+                        continue
+                    try:
+                        time.sleep(0.3)
+                        vr    = session.get(f"https://www.youtube.com/watch?v={svid}",
+                                            timeout=REQ_TIMEOUT)
+                        vhtml = vr.text
+                        if len(vhtml) < 50000:
+                            continue
+                        vipr  = _yt_parse_initial_player(vhtml)
+                        vvs   = vipr.get("videoDetails", {}) if vipr else {}
+                        vtitle = vvs.get("title") or ""
+                        if _is_free_chat(vtitle) or vvs.get("isLive"):
+                            continue
+                        if not vvs.get("isUpcoming"):
+                            continue
+                        sched, vtitle = _extract_sched(vhtml, vipr)
+                        if not sched:
+                            continue
+                        t   = datetime.fromisoformat(sched.replace("Z", "+00:00"))
+                        age = (now - t).total_seconds()
+                        if t > now or 0 <= age <= 48 * 3600:
+                            log.info(f"[fetch_all_upcoming] {channel_id} found via /streams: {svid} {vtitle!r:.40}")
+                            _try_add(svid, vtitle, sched, t <= now)
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
+    except Exception:
+        pass
+
+    # Sort by scheduled_at ascending
+    results.sort(key=lambda x: x.get("scheduled_at") or "")
+    return results
+
+
 def check_live(ch: dict) -> dict:
     if ch.get("platform") == "twitch":
         return check_twitch_live(ch["channel_id"])
@@ -616,78 +1350,146 @@ def check_live(ch: dict) -> dict:
 # Prevents notification spam from transient scrape failures.
 _OFFLINE_CONFIRM = 2
 
+# Max concurrent channel checks. Keep moderate to avoid hammering YouTube/Twitch.
+_CHECK_WORKERS = 10
+
+def _check_one_channel(ch: dict) -> None:
+    """Check a single channel and update its status in-place. Thread-safe."""
+    prev         = ch.get("last_status", {})
+    was_live     = prev.get("is_live", False)
+    was_upcoming = prev.get("is_upcoming", False)
+    was_waiting  = prev.get("is_waiting", False)
+    prev_started = prev.get("started_at")
+
+    status = check_live(ch)
+    now    = datetime.now(timezone.utc)
+
+    # ── Fallback: if offline but prev video_id known, probe it directly ───────
+    # Handles the case where the /live page is occupied by a free-chat
+    # placeholder, hiding an actual live or upcoming members-only stream.
+    if (not status.get("is_live") and not status.get("is_upcoming")
+            and not status.get("is_waiting")
+            and ch.get("platform", "youtube") == "youtube"):
+        prev_vid = prev.get("video_id")
+        if prev_vid:
+            try:
+                session = _make_session()
+                vr    = session.get(f"https://www.youtube.com/watch?v={prev_vid}",
+                                    timeout=REQ_TIMEOUT)
+                vhtml = vr.text
+                if len(vhtml) >= 50000:
+                    vipr  = _yt_parse_initial_player(vhtml)
+                    vvs   = vipr.get("videoDetails", {}) if vipr else {}
+                    vtitle = vvs.get("title") or ""
+                    if not _is_free_chat(vtitle):
+                        if vvs.get("isLive"):
+                            log.info(f"[check_one] {ch.get('name','?')}: found LIVE via prev video_id {prev_vid}")
+                            vmf  = vipr.get("microformat", {}).get("playerMicroformatRenderer", {}) if vipr else {}
+                            status = _base_status(
+                                is_live=True, video_id=prev_vid, title=vtitle,
+                                url=f"https://youtube.com/watch?v={prev_vid}",
+                                started_at=_find_live_start_time(vhtml, vipr, prev_vid) or None,
+                            )
+            except Exception:
+                pass
+
+    # ── Hysteresis: live → offline requires _OFFLINE_CONFIRM consecutive fails ──
+    if was_live and not status.get("is_live"):
+        miss = ch.get("_offline_misses", 0) + 1
+        ch["_offline_misses"] = miss
+        if miss < _OFFLINE_CONFIRM:
+            ch["last_checked"] = now.isoformat()
+            return
+    else:
+        ch["_offline_misses"] = 0
+
+    # ── Preserve started_at across checks while live ──────────────────────────
+    # Never stamp "now" — only use real startTimestamp from the scraper or
+    # carry the previously stored value forward. This ensures the timer shows
+    # actual stream duration, not time-since-detection.
+    if status.get("is_live"):
+        if prev_started and not status.get("started_at"):
+            # Carry forward real start time from a previous check
+            status["started_at"] = prev_started
+        elif status.get("started_at"):
+            # Normalise whatever the scraper returned (may be Unix ts or ISO)
+            status["started_at"] = _to_iso(status["started_at"])
+        # Fetch live viewer count (YouTube only)
+        if ch.get("platform", "youtube") == "youtube" and status.get("video_id"):
+            try:
+                vc = _get_viewer_count(status["video_id"])
+                log.info(f"[viewer] {ch.get('name','?')}: {vc}")
+                status["viewer_count"] = vc
+            except Exception:
+                pass
+
+    # Fetch waiting count for upcoming/waiting streams (YouTube only)
+    if (status.get("is_upcoming") or status.get("is_waiting")) and \
+            ch.get("platform", "youtube") == "youtube" and status.get("video_id"):
+        try:
+            vc = _get_viewer_count(status["video_id"])
+            log.info(f"[waiting] {ch.get('name','?')}: {vc}")
+            status["viewer_count"] = vc
+        except Exception:
+            pass
+
+    ch["last_status"]  = status
+    ch["last_checked"] = now.isoformat()
+    if status.get("is_upcoming") or status.get("is_waiting"):
+        log.info(
+            f"[check_one] {ch.get('name','?')}: stored "
+            f"{'UPCOMING' if status.get('is_upcoming') else 'WAITING'} "
+            f"title={status.get('title','')!r:.50} sched={status.get('scheduled_at','')}"
+        )
+
+    # Fetch all upcoming streams (YouTube only) — store extras in upcoming_statuses.
+    # Throttle to every 10 cycles for all channels to avoid rate limiting.
+    # Also runs for live channels so scheduled future streams show alongside the live card.
+    if ch.get("platform", "youtube") == "youtube":
+        n = ch.get("_upcoming_check_n", 0)
+        if n == 0:
+            all_up = _fetch_all_upcoming(ch["channel_id"])
+            primary_vid = status.get("video_id")
+            ch["upcoming_statuses"] = [u for u in all_up if u.get("video_id") != primary_vid]
+        else:
+            # Re-filter cached results every cycle in case patterns changed
+            primary_vid = status.get("video_id")
+            ch["upcoming_statuses"] = [
+                u for u in ch.get("upcoming_statuses", [])
+                if u.get("video_id") != primary_vid
+                and not _is_free_chat(u.get("title") or "")
+            ]
+        ch["_upcoming_check_n"] = (n + 1) % 10
+
+    # ── Notifications ─────────────────────────────────────────────────────────
+    name = ch.get("name", ch.get("channel_id", ""))
+    if not was_live and status.get("is_live"):
+        _push_notif("live", f"🔴 {name} is live",
+                    status.get("title") or "Started streaming",
+                    status.get("url") or "")
+    elif not was_upcoming and not was_waiting and status.get("is_upcoming"):
+        _push_notif("upcoming", f"📅 {name} scheduled a stream",
+                    status.get("title") or "",
+                    status.get("url") or "")
+
+
 def check_all_channels():
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     with _lock:
         channels = list(state["channels"])
-    for ch in channels:
-        prev         = ch.get("last_status", {})
-        was_live     = prev.get("is_live", False)
-        was_upcoming = prev.get("is_upcoming", False)
-        was_waiting  = prev.get("is_waiting", False)
-        prev_started = prev.get("started_at")
-        prev_sched   = prev.get("scheduled_at")
-        prev_url     = prev.get("url")
-        prev_title   = prev.get("title")
-        prev_vid     = prev.get("video_id")
 
-        status = check_live(ch)
-        now    = datetime.now(timezone.utc)
+    t0 = time.time()
+    with ThreadPoolExecutor(max_workers=_CHECK_WORKERS) as pool:
+        futures = {pool.submit(_check_one_channel, ch): ch for ch in channels}
+        for fut in as_completed(futures):
+            try:
+                fut.result()
+            except Exception as e:
+                ch = futures[fut]
+                log.warning(f"[check_all] error checking {ch.get('name','?')}: {e}")
 
-        # ── Hysteresis: live → offline requires _OFFLINE_CONFIRM consecutive fails ──
-        if was_live and not status.get("is_live"):
-            miss = ch.get("_offline_misses", 0) + 1
-            ch["_offline_misses"] = miss
-            if miss < _OFFLINE_CONFIRM:
-                # Not enough misses yet — hold the previous live status
-                ch["last_checked"] = now.isoformat()
-                continue          # skip status update entirely this cycle
-        else:
-            ch["_offline_misses"] = 0
-
-        # ── Preserve started_at across checks while live ──────────────────────────
-        if status.get("is_live"):
-            if not was_live:
-                if not status.get("started_at"):
-                    status["started_at"] = now.isoformat()
-            elif prev_started and not status.get("started_at"):
-                status["started_at"] = prev_started
-
-        # ── Waiting state: was upcoming, scheduled time passed, not yet live ──────
-        # Keep the channel in "waiting" (not offline) for up to 48 hours after
-        # the scheduled time so delayed streams don't look like cancellations.
-        if not status.get("is_live") and not status.get("is_upcoming"):
-            if (was_upcoming or was_waiting) and (prev_sched or prev_url):
-                # Check if we're within the grace window
-                grace_expired = False
-                if prev_sched:
-                    try:
-                        sched_dt = datetime.fromisoformat(prev_sched.replace("Z", "+00:00"))
-                        grace_expired = (now - sched_dt).total_seconds() > 48 * 3600
-                    except Exception:
-                        pass
-                if not grace_expired:
-                    # Keep the stream's metadata, mark as waiting
-                    status["is_waiting"]   = True
-                    status["url"]          = status.get("url") or prev_url
-                    status["title"]        = status.get("title") or prev_title
-                    status["video_id"]     = status.get("video_id") or prev_vid
-                    status["scheduled_at"] = prev_sched
-
-        ch["last_status"]  = status
-        ch["last_checked"] = now.isoformat()
-
-        # ── Notifications ─────────────────────────────────────────────────────────
-        name = ch.get("name", ch.get("channel_id", ""))
-        # live notification: only on genuine transition to live
-        if not was_live and status.get("is_live"):
-            _push_notif("live", f"🔴 {name} is live",
-                        status.get("title") or "Started streaming",
-                        status.get("url") or "")
-        # upcoming notification: only first time we see the upcoming flag
-        elif not was_upcoming and not was_waiting and status.get("is_upcoming"):
-            _push_notif("upcoming", f"📅 {name} scheduled a stream",
-                        status.get("title") or "",
-                        status.get("url") or "")
+    elapsed = time.time() - t0
+    log.info(f"[check_all] {len(channels)} channels checked in {elapsed:.1f}s")
     with _lock:
         state["last_global_check"] = datetime.now(timezone.utc).isoformat()
     save_channels()
@@ -863,6 +1665,16 @@ def api_sort():
 def api_check_now():
     threading.Thread(target=check_all_channels, daemon=True).start()
     return jsonify({"ok": True})
+
+
+@app.route("/api/check/upcoming", methods=["POST"])
+def api_check_upcoming_now():
+    """Force _fetch_all_upcoming to run on next cycle for all channels."""
+    with _lock:
+        for ch in state["channels"]:
+            ch["_upcoming_check_n"] = 0
+    threading.Thread(target=check_all_channels, daemon=True).start()
+    return jsonify({"ok": True, "message": "Upcoming scan forced for all channels"})
 
 
 @app.route("/api/settings", methods=["PATCH"])
@@ -1731,19 +2543,56 @@ def api_debug_channel(channel_id):
                 vvs  = vipr.get("videoDetails", {}) if vipr else {}
                 vmf  = vipr.get("microformat", {}).get("playerMicroformatRenderer", {}) if vipr else {}
                 vlbd = vmf.get("liveBroadcastDetails", {})
+                sched_raw = re.search(r'"scheduledStartTime"\s*:\s*"([^"]+)"', vhtml)
                 signals["rss_upcoming_check"].append({
-                    "videoId":    vid_id,
-                    "title":      entry_info.get("title", "")[:60],
-                    "isUpcoming": vvs.get("isUpcoming"),
-                    "isLive":     vvs.get("isLive"),
-                    "startTimestamp": vlbd.get("startTimestamp"),
+                    "videoId":            vid_id,
+                    "title":              entry_info.get("title", "")[:60],
+                    "isUpcoming":         vvs.get("isUpcoming"),
+                    "isLive":             vvs.get("isLive"),
+                    "startTimestamp":     vlbd.get("startTimestamp"),
+                    "scheduledStartTime": vvs.get("scheduledStartTime") or (sched_raw.group(1) if sched_raw else None),
                     "raw_isUpcoming_true": is_up,
                     "has_startTimestamp": has_sched,
+                    "has_scheduledStartTime": '"scheduledStartTime"' in vhtml,
                 })
             except Exception as e:
                 signals["rss_upcoming_check"].append({"videoId": vid_id, "error": str(e)})
 
     fresh = check_live(ch) if ch else check_youtube_live(channel_id)
+
+    # Streams tab — check for upcoming streams not in RSS
+    try:
+        session = _make_session()
+        sr = session.get(f"https://www.youtube.com/channel/{channel_id}/streams",
+                         timeout=REQ_TIMEOUT)
+        shtml = sr.text
+        # ytInitialData contains the video grid — extract all videoId values
+        yid = _yt_parse_initial_data(shtml)
+        # Flatten all videoId strings from the full ytInitialData blob
+        shtml_vids = list(dict.fromkeys(
+            re.findall(r'"videoId"\s*:\s*"([\w-]{11})"', shtml)
+        ))[:15]
+        upcoming_in_streams = []
+        for svid in shtml_vids:
+            vid_chunk_start = shtml.find(f'"{svid}"')
+            if vid_chunk_start != -1:
+                vid_chunk = shtml[vid_chunk_start:vid_chunk_start+2000]
+                has_up = ('"isUpcoming":true' in vid_chunk
+                          or '"upcomingEventData"' in vid_chunk
+                          or '"scheduledStartTime"' in vid_chunk)
+                if has_up:
+                    upcoming_in_streams.append(svid)
+        signals["streams_tab_len"] = len(shtml)
+        signals["streams_tab_video_ids"] = shtml_vids
+        signals["streams_tab_upcoming_ids"] = upcoming_in_streams
+        signals["streams_tab_has_ytInitialData"] = '"ytInitialData"' in shtml or 'var ytInitialData' in shtml
+        # Show first occurrence of videoId to diagnose format
+        vid_idx = shtml.find('"videoId"')
+        if vid_idx != -1:
+            signals["streams_tab_videoid_sample"] = shtml[vid_idx:vid_idx+60]
+    except Exception as e:
+        signals["streams_tab_error"] = str(e)
+
     return jsonify({
         "channel":     name,
         "stored":      ch.get("last_status") if ch else None,
@@ -1779,6 +2628,34 @@ def api_diag():
             result["ytdlp_version"] = v.stdout.strip()
         except Exception as e:
             result["ytdlp_version"] = str(e)
+
+    # 3. Check cookie authentication — fetch a YouTube page and check if logged in
+    try:
+        session = _make_session()
+        r = session.get("https://www.youtube.com/",
+                        timeout=10, allow_redirects=True)
+        html = r.text
+        import re as _re
+        # Check for account name in various locations YouTube embeds it
+        m = (_re.search(r'"accountName"\s*:\s*\{"simpleText"\s*:\s*"([^"]+)"', html)
+          or _re.search(r'"displayName"\s*:\s*\{"simpleText"\s*:\s*"([^"]+)"', html)
+          or _re.search(r'"email"\s*:\s*"([^"@]+@[^"]+)"', html))
+        if m:
+            result["cookie_auth"] = f"logged in as: {m.group(1)}"
+        elif '"LOGGED_IN":true' in html or '"isSignedIn":true' in html:
+            result["cookie_auth"] = "authenticated (account name not found in page)"
+        elif '"LOGGED_IN":false' in html:
+            result["cookie_auth"] = "NOT authenticated — cookies expired or invalid"
+        else:
+            # Try checking if the response contains personalised content
+            if "subscriptions" in html.lower() or "history" in html.lower():
+                result["cookie_auth"] = "likely authenticated (personalised content detected)"
+            else:
+                result["cookie_auth"] = "unknown — could not determine login state"
+        result["cookie_count"] = len(list(session.cookies))
+        result["yt_response_len"] = len(html)
+    except Exception as e:
+        result["cookie_auth"] = f"error: {e}"
 
     # 4. Show BGUTIL_URL
     result["bgutil_url"] = BGUTIL_URL
@@ -1833,6 +2710,29 @@ def api_cookies_status():
         "size": COOKIES_FILE.stat().st_size if exists else 0,
     })
 
+@app.route("/api/cookies/debug")
+def api_cookies_debug():
+    """Show which cookies are loaded (names only, no values for security)."""
+    try:
+        from http.cookiejar import MozillaCookieJar
+        jar = MozillaCookieJar()
+        jar.load(str(_COOKIES_PATH), ignore_discard=True, ignore_expires=True)
+        yt_cookies  = [(c.name, c.domain, c.expires) for c in jar if "youtube" in c.domain]
+        key_cookies = ["SID", "SSID", "HSID", "LOGIN_INFO", "SAPISID",
+                       "__Secure-1PSID", "__Secure-3PSID", "VISITOR_INFO1_LIVE"]
+        present = [c[0] for c in yt_cookies]
+        missing = [k for k in key_cookies if k not in present]
+        return jsonify({
+            "total_cookies": len(list(jar)),
+            "youtube_cookies": len(yt_cookies),
+            "youtube_cookie_names": present,
+            "key_auth_cookies_present": [k for k in key_cookies if k in present],
+            "key_auth_cookies_missing": missing,
+            "auth_ok": len(missing) == 0,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/cookies", methods=["POST"])
 def api_cookies_upload():
     """Upload a cookies.txt (Netscape format) file."""
@@ -1859,12 +2759,19 @@ def api_cookies_delete():
 
 if __name__ == "__main__":
     state["channels"] = load_channels()
-    # Backfill started_at for channels already live on boot
+    # Migrate old last_status dicts that predate is_upcoming / is_waiting / is_waiting fields
     _now_iso = datetime.now(timezone.utc).isoformat()
-    for _ch in state["channels"]:
+    for _i, _ch in enumerate(state["channels"]):
         _st = _ch.get("last_status", {})
-        if _st.get("is_live") and not _st.get("started_at"):
-            _st["started_at"] = _ch.get("last_checked") or _now_iso
+        _st.setdefault("is_upcoming", False)
+        _st.setdefault("is_waiting",  False)
+        _st.setdefault("scheduled_at", None)
+        _ch.setdefault("upcoming_statuses", [])
+        # Stagger _upcoming_check_n so channels don't all scan at once.
+        # Spread 39 channels across 10 slots: channel i starts at slot i%10.
+        # This means at most ~4 channels scan per cycle instead of all 39.
+        _ch["_upcoming_check_n"] = _i % 10
+        # Do not backfill started_at — only real scraper values are used
     print("=" * 52)
     print("  Livestream Monitor (YouTube + Twitch)")
     print("  No API keys required")
