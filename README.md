@@ -2,7 +2,7 @@
 
 A self-hosted, no-API-key livestream monitor for **YouTube** and **Twitch**. Runs in Docker, displays live and upcoming streams in a real-time web UI, and can record streams directly to disk.
 
-![Stream Monitor UI](https://i.imgur.com/placeholder.png)
+![Stream Monitor UI](https://i.imgur.com/Ltn1FIL.png)
 
 ---
 
@@ -34,8 +34,8 @@ A self-hosted, no-API-key livestream monitor for **YouTube** and **Twitch**. Run
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/yourusername/stream-monitor.git
-cd stream-monitor
+git clone https://github.com/AndouJJ/Livestream-monitor.git
+cd Livestream-monitor
 ```
 
 ### 2. Create required files
