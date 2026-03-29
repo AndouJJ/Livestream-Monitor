@@ -935,6 +935,21 @@ def check_youtube_live(channel_id: str) -> dict:
                                     url=f"https://youtube.com/watch?v={mvid}",
                                     started_at=_find_live_start_time(mem_html, mem_ipr, mvid) or None,
                                 )
+                            if mvs.get("isUpcoming") and not _is_free_chat(mtitle):
+                                mmf  = mem_ipr.get("microformat", {}).get("playerMicroformatRenderer", {})
+                                mlbd = mmf.get("liveBroadcastDetails", {})
+                                sched = _to_iso(mlbd.get("startTimestamp") or mvs.get("scheduledStartTime"))
+                                if not sched and '"scheduledStartTime"' in mem_html:
+                                    ms = re.search(r'"scheduledStartTime"\s*:\s*"([^"]+)"', mem_html)
+                                    if ms:
+                                        sched = _to_iso(ms.group(1))
+                                log.info(f"[live-check] YouTube {channel_id}: UPCOMING (membership tab) {mtitle!r}")
+                                if upcoming_candidate is None:
+                                    upcoming_candidate = _base_status(
+                                        is_upcoming=True, video_id=mvid, title=mtitle,
+                                        url=f"https://youtube.com/watch?v={mvid}",
+                                        scheduled_at=sched,
+                                    )
                     # Also scan for video IDs in the membership tab page
                     # and probe each one for live/upcoming status
                     mem_vids = list(dict.fromkeys(
@@ -962,10 +977,32 @@ def check_youtube_live(channel_id: str) -> dict:
                                     url=f"https://youtube.com/watch?v={mvid}",
                                     started_at=_find_live_start_time(vhtml, vipr, mvid) or None,
                                 )
+                            if vvs.get("isUpcoming") and upcoming_candidate is None:
+                                vmf  = vipr.get("microformat", {}).get("playerMicroformatRenderer", {}) if vipr else {}
+                                vlbd = vmf.get("liveBroadcastDetails", {})
+                                sched = _to_iso(vlbd.get("startTimestamp") or vvs.get("scheduledStartTime"))
+                                if not sched and '"scheduledStartTime"' in vhtml:
+                                    ms = re.search(r'"scheduledStartTime"\s*:\s*"([^"]+)"', vhtml)
+                                    if ms:
+                                        sched = _to_iso(ms.group(1))
+                                log.info(f"[live-check] YouTube {channel_id}: UPCOMING (membership/probe) {vtitle!r}")
+                                upcoming_candidate = _base_status(
+                                    is_upcoming=True, video_id=mvid, title=vtitle,
+                                    url=f"https://youtube.com/watch?v={mvid}",
+                                    scheduled_at=sched,
+                                )
                         except Exception:
                             continue
             except Exception as e:
                 log.debug(f"[live-check] {channel_id} membership tab error: {e}")
+
+        # Return any upcoming candidate found by Methods 1-6 before RSS fallback
+        if upcoming_candidate:
+            log.info(
+                f"[live-check] YouTube {channel_id}: UPCOMING "
+                f"{upcoming_candidate.get('title','')!r} @ {upcoming_candidate.get('scheduled_at','')}"
+            )
+            return upcoming_candidate
 
         # ── Method 5: RSS feed fallback ───────────────────────────────────
         # When /live page is blocked by a free-chat placeholder or has no
@@ -1216,7 +1253,7 @@ def _fetch_all_upcoming(channel_id: str) -> list:
         # ── 1. Scan RSS entries ───────────────────────────────────────────
         if rss_tree:
             yt_ns   = "http://www.youtube.com/xml/schemas/2015"
-            entries = rss_tree.findall(f"{{{RSS_NS}}}entry")[:10]
+            entries = rss_tree.findall(f"{{{RSS_NS}}}entry")[:5]
             for entry in entries:
                 vid_el = entry.find(f"{{{yt_ns}}}videoId")
                 if vid_el is None:
@@ -1225,7 +1262,7 @@ def _fetch_all_upcoming(channel_id: str) -> list:
                 if vid_id in seen_ids:
                     continue
                 try:
-                    time.sleep(0.5)  # space out requests to avoid rate limiting
+                    time.sleep(1.0)  # space out requests to avoid rate limiting
                     vr    = session.get(f"https://www.youtube.com/watch?v={vid_id}",
                                         timeout=REQ_TIMEOUT)
                     vhtml = vr.text
@@ -1300,17 +1337,38 @@ def _fetch_all_upcoming(channel_id: str) -> list:
                 # Extract all video IDs from the streams tab page
                 stream_vids = list(dict.fromkeys(
                     re.findall(r'"videoId"\s*:\s*"([\w-]{11})"', shtml)
-                ))[:10]
+                ))[:5]
                 log.info(f"[fetch_all_upcoming] {channel_id} /streams vids: {stream_vids}")
                 for svid in stream_vids:
                     if svid in seen_ids:
                         continue
                     try:
-                        time.sleep(0.3)
+                        time.sleep(1.0)  # longer delay to avoid rate limiting
                         vr    = session.get(f"https://www.youtube.com/watch?v={svid}",
                                             timeout=REQ_TIMEOUT)
                         vhtml = vr.text
                         if len(vhtml) < 50000:
+                            # Members-only wall — try to extract schedule from
+                            # the streams tab inline JSON for this video ID
+                            vid_idx = shtml.find(f'"{svid}"')
+                            if vid_idx != -1:
+                                chunk = shtml[vid_idx:vid_idx + 3000]
+                                # Look for scheduledStartTime in the renderer chunk
+                                ms = re.search(r'"scheduledStartTime"\s*:\s*"(\d+)"', chunk)
+                                if ms:
+                                    sched = _to_iso(ms.group(1))
+                                    # Get title from the chunk
+                                    mt = re.search(r'"title"\s*:\s*\{"runs"\s*:\s*\[\{"text"\s*:\s*"([^"]+)"', chunk)
+                                    vtitle = mt.group(1) if mt else ""
+                                    if not _is_free_chat(vtitle):
+                                        try:
+                                            t   = datetime.fromisoformat(sched.replace("Z", "+00:00"))
+                                            age = (now - t).total_seconds()
+                                            if t > now or 0 <= age <= 48 * 3600:
+                                                log.info(f"[fetch_all_upcoming] {channel_id} members-only upcoming via /streams inline: {svid} {vtitle!r:.40}")
+                                                _try_add(svid, vtitle, sched, t <= now)
+                                        except Exception:
+                                            pass
                             continue
                         vipr  = _yt_parse_initial_player(vhtml)
                         vvs   = vipr.get("videoDetails", {}) if vipr else {}
@@ -1443,23 +1501,30 @@ def _check_one_channel(ch: dict) -> None:
         )
 
     # Fetch all upcoming streams (YouTube only) — store extras in upcoming_statuses.
-    # Throttle to every 10 cycles for all channels to avoid rate limiting.
-    # Also runs for live channels so scheduled future streams show alongside the live card.
+    # Only scan channels that are live or upcoming — offline channels don't need
+    # this since check_youtube_live already handles their primary upcoming stream.
+    # Throttle to every 10 cycles even for active channels to avoid rate limiting.
     if ch.get("platform", "youtube") == "youtube":
-        n = ch.get("_upcoming_check_n", 0)
-        if n == 0:
-            all_up = _fetch_all_upcoming(ch["channel_id"])
-            primary_vid = status.get("video_id")
-            ch["upcoming_statuses"] = [u for u in all_up if u.get("video_id") != primary_vid]
+        is_active = status.get("is_live") or status.get("is_upcoming") or status.get("is_waiting")
+        if is_active:
+            n = ch.get("_upcoming_check_n", 0)
+            if n == 0:
+                all_up = _fetch_all_upcoming(ch["channel_id"])
+                primary_vid = status.get("video_id")
+                ch["upcoming_statuses"] = [u for u in all_up if u.get("video_id") != primary_vid]
+            else:
+                # Re-filter cached results every cycle in case patterns changed
+                primary_vid = status.get("video_id")
+                ch["upcoming_statuses"] = [
+                    u for u in ch.get("upcoming_statuses", [])
+                    if u.get("video_id") != primary_vid
+                    and not _is_free_chat(u.get("title") or "")
+                ]
+            ch["_upcoming_check_n"] = (n + 1) % 10
         else:
-            # Re-filter cached results every cycle in case patterns changed
-            primary_vid = status.get("video_id")
-            ch["upcoming_statuses"] = [
-                u for u in ch.get("upcoming_statuses", [])
-                if u.get("video_id") != primary_vid
-                and not _is_free_chat(u.get("title") or "")
-            ]
-        ch["_upcoming_check_n"] = (n + 1) % 10
+            # Channel is offline — clear any stale upcoming_statuses
+            ch["upcoming_statuses"] = []
+            ch["_upcoming_check_n"] = 0  # Reset so it scans immediately when channel goes live
 
     # ── Notifications ─────────────────────────────────────────────────────────
     name = ch.get("name", ch.get("channel_id", ""))
