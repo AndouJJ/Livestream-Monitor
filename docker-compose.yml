@@ -22,6 +22,10 @@ services:
       - BGUTIL_PROVIDER_URL=http://bgutil-provider:4416
       - COOKIES_FILE=/app/cookies.txt
       - DOWNLOAD_BASE_DIR=/app/downloads
+      # Required to protect the site — set these in your .env (never commit it).
+      # Leaving them unset disables auth entirely, which app.py will log a warning about.
+      - AUTH_USERNAME=${AUTH_USERNAME}
+      - AUTH_PASSWORD=${AUTH_PASSWORD}
     depends_on:
       - bgutil-provider
     restart: unless-stopped
