@@ -1,0 +1,12 @@
+# Secrets / credentials — never commit
+cookies.txt
+.env
+
+# Runtime state (created on first run / mounted as volumes)
+settings.json
+logs/
+downloads/
+
+# Python
+__pycache__/
+*.pyc
