@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import threading
 import time
 import xml.etree.ElementTree as ET
@@ -18,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, Response
 
 # ─── Logging setup ────────────────────────────────────────────────────────────
 LOG_FILE = Path("logs/monitor.log")
@@ -36,6 +37,35 @@ logging.basicConfig(
 log = logging.getLogger("monitor")
 
 app = Flask(__name__, static_folder="static")
+
+# ─── Basic auth (set AUTH_USERNAME + AUTH_PASSWORD in the deployment env) ─────
+# Protects every route. If either var is unset, auth is disabled and a warning
+# is logged — intended only for local/trusted-network use, never for a public
+# Coolify deployment.
+AUTH_USERNAME = os.environ.get("AUTH_USERNAME", "")
+AUTH_PASSWORD = os.environ.get("AUTH_PASSWORD", "")
+
+if not (AUTH_USERNAME and AUTH_PASSWORD):
+    log.warning(
+        "[auth] AUTH_USERNAME/AUTH_PASSWORD not set — site is UNAUTHENTICATED. "
+        "Set both env vars before exposing this publicly."
+    )
+
+@app.before_request
+def _require_auth():
+    if not (AUTH_USERNAME and AUTH_PASSWORD):
+        return  # auth disabled
+    auth = request.authorization
+    ok = (
+        auth is not None
+        and secrets.compare_digest(auth.username or "", AUTH_USERNAME)
+        and secrets.compare_digest(auth.password or "", AUTH_PASSWORD)
+    )
+    if not ok:
+        return Response(
+            "Authentication required", 401,
+            {"WWW-Authenticate": 'Basic realm="Livestream Monitor"'},
+        )
 
 DATA_FILE        = "channels.json"
 DEFAULT_INTERVAL = 90
