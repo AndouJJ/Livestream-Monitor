@@ -15,6 +15,7 @@ A self-hosted, no-API-key livestream monitor for **YouTube** and **Twitch**. Run
 - **Stream recording** — download live streams via yt-dlp with live chat capture
 - **No API keys required** — scrapes YouTube RSS feeds and page HTML directly
 - **Cookie authentication** — upload your browser cookies for members-only content
+- **HTTP Basic Auth** — protects the whole site behind a username/password, so it's safe to expose on the internet (e.g. via Coolify)
 - **Drag-to-reorder** — arrange channels however you like
 - **Platform filter** — view YouTube-only or Twitch-only
 - **Notifications** — in-browser alerts when a channel goes live or schedules a stream
@@ -55,9 +56,16 @@ Create an empty `cookies.txt`:
 touch cookies.txt
 ```
 
-Create a `.env` file to set where downloads are saved:
+Create your `.env` from the example and fill in real values:
+```bash
+cp .env.example .env
+```
+
+At minimum set a download path and — **importantly** — an auth username/password (see [Authentication](#authentication) below):
 ```env
 DOWNLOAD_HOST_PATH=./downloads
+AUTH_USERNAME=youruser
+AUTH_PASSWORD=a-long-random-password
 ```
 
 On Windows with a specific drive:
@@ -73,7 +81,25 @@ docker compose up -d --build
 
 ### 4. Open the UI
 
-Navigate to [http://localhost:5000](http://localhost:5000)
+Navigate to [http://localhost:5000](http://localhost:5000) and log in with the `AUTH_USERNAME`/`AUTH_PASSWORD` you set.
+
+---
+
+## Authentication
+
+The app sits behind **HTTP Basic Auth**, enforced on every route (UI, API, downloads — everything). This matters because the app has no other login system, and is commonly deployed somewhere publicly reachable (Coolify, a VPS, etc.).
+
+- Set `AUTH_USERNAME` and `AUTH_PASSWORD` as environment variables (via `.env` locally, or as secrets in your Coolify service's environment settings — **never commit them**).
+- If either variable is unset, auth is **disabled** and the app logs a warning on startup. Only run without auth on a fully trusted, non-internet-facing network.
+- Credentials are compared with a constant-time check (`secrets.compare_digest`) to avoid timing attacks.
+- Because this is Basic Auth over plain HTTP by default, put the app behind HTTPS in production — Coolify's built-in reverse proxy (Traefik) handles this automatically when you attach a domain, so credentials aren't sent in the clear.
+
+### Deploying on Coolify
+
+1. Push this repo to GitHub (or point Coolify at it directly) and create a new Coolify service from it — it will build via the included `Dockerfile`/`docker-compose.yml`.
+2. In the service's **Environment Variables**, set `AUTH_USERNAME`, `AUTH_PASSWORD`, and `DOWNLOAD_HOST_PATH` (and any others from `.env.example`) as secrets — do not put them in the repo.
+3. Attach a domain so Coolify issues HTTPS for you; the auth prompt then travels encrypted.
+4. `cookies.txt`, `channels.json`, and `settings.json` are bind-mounted volumes — create them as empty/placeholder files on the host (or via Coolify's persistent storage) before first deploy, same as the Quick Start above.
 
 ---
 
@@ -82,16 +108,18 @@ Navigate to [http://localhost:5000](http://localhost:5000)
 ```
 stream-monitor/
 ├── app.py              # Flask backend — all scraping, detection, and API logic
-├── index.html          # Frontend UI (served as a static file)
+├── static/
+│   └── index.html      # Frontend UI (served as a static file)
 ├── Dockerfile          # Container definition
 ├── docker-compose.yml  # Multi-container setup (monitor + bgutil provider)
-├── .env                # Download path configuration
+├── .env.example        # Template for required environment variables
+├── .env                # Your real config — gitignored, never commit
 ├── channels.json       # Persisted channel list and last-known status
 ├── settings.json       # Persisted settings (interval, auto-check, etc.)
-├── cookies.txt         # YouTube/Twitch browser cookies (Netscape format)
-├── downloads/          # Recorded streams saved here
+├── cookies.txt         # YouTube/Twitch browser cookies (Netscape format) — gitignored
+├── downloads/          # Recorded streams saved here — gitignored
 └── logs/
-    └── monitor.log     # Application log
+    └── monitor.log     # Application log — gitignored
 ```
 
 ---
@@ -143,6 +171,8 @@ Cookies are required for:
 - **Members-only streams** — detecting and recording
 - **Reduced bot-detection** — YouTube serves full page content to authenticated sessions
 
+Not to be confused with the [Authentication](#authentication) section above — that's the login gate for the site itself; this is YouTube's own session cookies, used server-side by yt-dlp/the scraper.
+
 ### How to export cookies
 
 1. Install the **[Get cookies.txt LOCALLY](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)** Chrome extension
@@ -150,7 +180,9 @@ Cookies are required for:
 3. Go to `youtube.com`
 4. Click the extension → Export → `youtube.com`
 5. Make sure **"Include HttpOnly cookies"** is checked
-6. Upload the exported file via **Settings → YouTube Cookies** in the UI
+6. Upload the exported file via **Settings → YouTube Cookies** in the UI (or drop it in as `cookies.txt` locally before first deploy)
+
+`cookies.txt` is gitignored — it never gets committed, and uploads via the UI only write to the running container's mounted volume.
 
 ### Verifying cookies are working
 
@@ -196,7 +228,7 @@ downloads/
 
 ## API Reference
 
-All endpoints are JSON. Base URL: `http://localhost:5000`
+All endpoints are JSON and require HTTP Basic Auth (see [Authentication](#authentication)) when `AUTH_USERNAME`/`AUTH_PASSWORD` are set. Base URL: `http://localhost:5000`
 
 ### Channels
 
@@ -360,6 +392,10 @@ docker compose up -d
 Invoke-WebRequest -Method POST -Uri http://localhost:5000/api/check/upcoming
 ```
 
+### Browser keeps prompting for username/password
+
+That's the site's own Basic Auth (see [Authentication](#authentication)) — enter the `AUTH_USERNAME`/`AUTH_PASSWORD` you set in `.env`, not your YouTube/Twitch credentials.
+
 ---
 
 ## Architecture
@@ -371,7 +407,7 @@ Invoke-WebRequest -Method POST -Uri http://localhost:5000/api/check/upcoming
 │  ┌─────────────────┐  ┌──────────────────┐  │
 │  │   yt-monitor    │  │ bgutil-provider  │  │
 │  │  (Flask :5000)  │◄─│    (:4416)       │  │
-│  │                 │  │  PO Token gen    │  │
+│  │  Basic Auth     │  │  PO Token gen    │  │
 │  │  - Scraper      │  └──────────────────┘  │
 │  │  - API          │                         │
 │  │  - yt-dlp       │                         │
@@ -387,7 +423,7 @@ Invoke-WebRequest -Method POST -Uri http://localhost:5000/api/check/upcoming
 └─────────────────────────────────────────────┘
 ```
 
-The backend is a single Flask process with a background thread for auto-checking. Channel checks run concurrently via `ThreadPoolExecutor` (10 workers). All state is persisted to `channels.json`.
+The backend is a single Flask process with a background thread for auto-checking. Channel checks run concurrently via `ThreadPoolExecutor` (10 workers). All state is persisted to `channels.json`. Every request passes through a `before_request` Basic Auth check first.
 
 ---
 
