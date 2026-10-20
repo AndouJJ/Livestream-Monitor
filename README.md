@@ -202,7 +202,7 @@ Stream Monitor tracks each YouTube channel's **Community tab** and surfaces new 
 - **YouTube only** — Twitch has no equivalent concept, so Twitch channels are skipped entirely.
 - **Public and members-only posts** are both tracked; a members-only post is flagged with a **🔒 Members Only** badge. Seeing members-only posts requires a working cookie upload for an account with active membership on that channel — see [Cookie Authentication](#cookie-authentication) above. Without valid cookies, only public posts will show up.
 - New posts fire a toast notification (and a browser notification, if enabled), the same way "channel went live" alerts work.
-- Posts are scraped from `https://www.youtube.com/channel/<id>/community` by parsing the same `ytInitialData` JSON blob YouTube embeds elsewhere, which is an internal, undocumented schema — if YouTube changes its page structure, post detection can silently stop working until the scraper is updated.
+- Posts are scraped from `https://www.youtube.com/channel/<id>/posts` (YouTube renamed the old "Community" tab to "Posts") by parsing the same `ytInitialData` JSON blob YouTube embeds elsewhere, which is an internal, undocumented schema — if YouTube changes its page structure again, post detection can silently stop working until the scraper is updated.
 - To avoid hammering YouTube, the backend only scans for new posts once every `POST_CHECK_EVERY_N_CYCLES` auto-check cycles (10 by default — see the constant near the top of `app.py`), not on every single check. Use **↻ Refresh** in the Posts drawer, or `POST /api/posts/check`, to force an immediate scan.
 - Posts are stored separately in `posts.json` (not `channels.json`), capped at the 20 most recent per channel.
 

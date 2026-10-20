@@ -74,7 +74,7 @@ REQ_TIMEOUT      = 15
 
 # How many check_all_channels() cycles to skip between community-post scans.
 # Posts change far less often than live status, and this keeps us from
-# hammering YouTube's /community page every single auto-check tick (mirrors
+# hammering YouTube's /posts page every single auto-check tick (mirrors
 # the _upcoming_check_n staggering used for the upcoming-streams scan).
 POST_CHECK_EVERY_N_CYCLES = 10
 
@@ -1527,12 +1527,12 @@ def fetch_community_posts(channel_id: str, limit: int = 10) -> list:
     posts = []
     try:
         session = _make_session()
-        url     = f"https://www.youtube.com/channel/{channel_id}/community"
+        url     = f"https://www.youtube.com/channel/{channel_id}/posts"
         r       = session.get(url, timeout=REQ_TIMEOUT)
         html    = r.text
         data    = _yt_parse_initial_data(html)
         if not data:
-            log.warning(f"[posts] {channel_id}: no ytInitialData found on /community")
+            log.warning(f"[posts] {channel_id}: no ytInitialData found on /posts")
             return []
 
         contents = data.get("contents") or {}
@@ -1547,7 +1547,7 @@ def fetch_community_posts(channel_id: str, limit: int = 10) -> list:
         community_tab = None
         for tab in tabs:
             tr = tab.get("tabRenderer") or tab.get("expandableTabRenderer") or {}
-            if (tr.get("title") or "").strip().lower() == "community":
+            if (tr.get("title") or "").strip().lower() in ("community", "posts"):
                 community_tab = tr
                 break
         if community_tab is None:
@@ -1817,7 +1817,7 @@ def check_all_channels():
 
     # ── Community posts: throttled to once every POST_CHECK_EVERY_N_CYCLES ─────
     # check_all_channels() cycles (see constant near top of file), since posts
-    # change far less often than live status and scanning /community every
+    # change far less often than live status and scanning /posts every
     # single auto-check tick would hammer YouTube unnecessarily.
     n = state["_post_check_n"]
     if n == 0:
@@ -2145,7 +2145,7 @@ def api_debug_posts(channel_id):
         ch = next((c for c in state["channels"] if c["channel_id"] == channel_id), None)
     name = ch["name"] if ch else channel_id
 
-    url = f"https://www.youtube.com/channel/{channel_id}/community"
+    url = f"https://www.youtube.com/channel/{channel_id}/posts"
     try:
         session = _make_session()
         r         = session.get(url, timeout=REQ_TIMEOUT)
@@ -2190,7 +2190,7 @@ def api_debug_posts(channel_id):
             tr = tab.get("tabRenderer") or tab.get("expandableTabRenderer") or {}
             if tr.get("title"):
                 tab_titles.append(tr.get("title"))
-            if (tr.get("title") or "").strip().lower() == "community":
+            if (tr.get("title") or "").strip().lower() in ("community", "posts"):
                 community_tab = tr
 
         if community_tab is not None:
