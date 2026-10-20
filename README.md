@@ -19,6 +19,7 @@ A self-hosted, no-API-key livestream monitor for **YouTube** and **Twitch**. Run
 - **Drag-to-reorder** — arrange channels however you like
 - **Platform filter** — view YouTube-only or Twitch-only
 - **Notifications** — in-browser alerts when a channel goes live or schedules a stream
+- **Community posts** — tracks YouTube Community tab posts (public and members-only) in a dedicated Posts drawer, with toast alerts on new posts
 - **Free chat filter** — configurable list of titles to ignore (free chat rooms, schedule posts, etc.)
 
 ---
@@ -194,6 +195,19 @@ Cookies typically expire after 1–3 months and will need to be re-exported.
 
 ---
 
+## Community Posts
+
+Stream Monitor tracks each YouTube channel's **Community tab** and surfaces new posts in a dedicated **Posts** drawer (top-right button, next to Downloads), the same way live/upcoming status is tracked for streams.
+
+- **YouTube only** — Twitch has no equivalent concept, so Twitch channels are skipped entirely.
+- **Public and members-only posts** are both tracked; a members-only post is flagged with a **🔒 Members Only** badge. Seeing members-only posts requires a working cookie upload for an account with active membership on that channel — see [Cookie Authentication](#cookie-authentication) above. Without valid cookies, only public posts will show up.
+- New posts fire a toast notification (and a browser notification, if enabled), the same way "channel went live" alerts work.
+- Posts are scraped from `https://www.youtube.com/channel/<id>/community` by parsing the same `ytInitialData` JSON blob YouTube embeds elsewhere, which is an internal, undocumented schema — if YouTube changes its page structure, post detection can silently stop working until the scraper is updated.
+- To avoid hammering YouTube, the backend only scans for new posts once every `POST_CHECK_EVERY_N_CYCLES` auto-check cycles (10 by default — see the constant near the top of `app.py`), not on every single check. Use **↻ Refresh** in the Posts drawer, or `POST /api/posts/check`, to force an immediate scan.
+- Posts are stored separately in `posts.json` (not `channels.json`), capped at the 20 most recent per channel.
+
+---
+
 ## Stream Recording
 
 Click the **Record** button on any live stream card. Downloads are managed in the **Downloads** drawer (top-right button).
@@ -261,6 +275,14 @@ All endpoints are JSON and require HTTP Basic Auth (see [Authentication](#authen
 | `GET` | `/api/downloads/<id>/rawlog` | Full raw log file |
 | `GET` | `/api/downloads/<id>/files` | List output files |
 | `GET` | `/api/downloads/<id>/file/<filename>` | Download a specific output file |
+
+### Community Posts
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/posts` | List all community posts, newest-first (by scrape time). Filter with `?channel_id=` |
+| `POST` | `/api/posts/check` | Trigger an immediate community-posts scan for all YouTube channels |
+| `DELETE` | `/api/posts/<post_id>` | Dismiss/remove a post from the stored feed |
 
 ### Diagnostics
 
