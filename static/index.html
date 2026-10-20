@@ -502,6 +502,31 @@ select option { background: var(--surf2); }
 }
 .posts-select:focus { border-color: var(--accent-yt); }
 
+.posts-channel-wrap { position: relative; flex: 1; min-width: 0; }
+.posts-channel-btn {
+  width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-align: left;
+}
+#posts-channel-count { color: var(--accent-yt); font-weight: 700; margin-left: 3px; }
+.posts-channel-panel {
+  display: none; position: absolute; top: calc(100% + 4px); right: 0; width: 240px;
+  background: var(--surf3); border: 1px solid var(--border2); border-radius: var(--r);
+  box-shadow: 0 8px 24px rgba(0,0,0,.5); z-index: 600; overflow: hidden;
+}
+.posts-channel-panel.open { display: flex; flex-direction: column; }
+.posts-channel-panel-head {
+  display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--border);
+}
+.posts-channel-panel-head .btn { flex: 1; }
+.posts-channel-list { max-height: 260px; overflow-y: auto; padding: 4px; }
+.posts-channel-row {
+  display: flex; align-items: center; gap: 7px; padding: 6px 8px; border-radius: var(--r);
+  cursor: pointer; font-size: 12px; color: var(--text2);
+}
+.posts-channel-row:hover { background: var(--surf2); color: var(--text); }
+.posts-channel-row input { flex-shrink: 0; cursor: pointer; }
+.posts-channel-row span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 .posts-list { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
 
 .post-item {
@@ -837,6 +862,18 @@ select option { background: var(--surf2); }
       <option value="members">🔒 Members only</option>
       <option value="public">🌐 Public only</option>
     </select>
+    <div class="posts-channel-wrap">
+      <button class="posts-select posts-channel-btn" id="posts-channel-btn" onclick="togglePostsChannelPanel()">
+        📺 Channels<span id="posts-channel-count"></span>
+      </button>
+      <div class="posts-channel-panel" id="posts-channel-panel">
+        <div class="posts-channel-panel-head">
+          <button class="btn sm" onclick="setAllPostsChannels(true)">Select all</button>
+          <button class="btn sm" onclick="setAllPostsChannels(false)">Clear</button>
+        </div>
+        <div class="posts-channel-list" id="posts-channel-list"></div>
+      </div>
+    </div>
   </div>
 
   <div class="posts-list" id="posts-list">
@@ -1626,6 +1663,12 @@ function togglePostsDrawer() {
 }
 
 let _postsRaw = [];
+// Which channel_ids show in the drawer. Populated to "all" automatically as
+// channels are first seen (see buildPostsChannelList), so unchecking one is
+// an explicit opt-out rather than this set meaning something different when
+// empty vs full.
+let postsSelectedChannels = new Set();
+let _postsChannelsSeen    = new Set();
 
 async function syncPosts(manualCheck = false) {
   if (manualCheck) {
@@ -1659,7 +1702,76 @@ const POST_CLAMP_CHARS = 280;
 function renderPosts(list) {
   _postsRaw = list;
   updatePostsBadge(list);
+  buildPostsChannelList();
   renderFilteredPosts();
+}
+
+// ── Channel filter popover ──────────────────────────────────────────────────
+function buildPostsChannelList() {
+  const byId = new Map();
+  _postsRaw.forEach(p => {
+    if (!byId.has(p.channel_id)) byId.set(p.channel_id, p.channel_name || p.channel_id);
+  });
+  const entries = Array.from(byId.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+
+  // Newly-seen channels default to selected (visible), so the filter starts
+  // as "show everything" and unchecking one is an explicit opt-out.
+  entries.forEach(([id]) => {
+    if (!_postsChannelsSeen.has(id)) {
+      postsSelectedChannels.add(id);
+      _postsChannelsSeen.add(id);
+    }
+  });
+
+  const listEl = document.getElementById('posts-channel-list');
+  listEl.innerHTML = entries.map(([id], i) =>
+    `<label class="posts-channel-row">
+       <input type="checkbox" data-channel-id="${x(id)}" ${postsSelectedChannels.has(id) ? 'checked' : ''}
+              onchange="togglePostsChannel('${x(id)}', this.checked)">
+       <span data-post-channel-label="${i}"></span>
+     </label>`
+  ).join('');
+  listEl.querySelectorAll('[data-post-channel-label]').forEach((node, i) => {
+    node.textContent = entries[i][1];
+  });
+
+  updatePostsChannelCount();
+}
+
+function togglePostsChannelPanel() {
+  document.getElementById('posts-channel-panel').classList.toggle('open');
+}
+
+document.addEventListener('click', (e) => {
+  const panel = document.getElementById('posts-channel-panel');
+  if (panel && panel.classList.contains('open') && !e.target.closest('.posts-channel-wrap')) {
+    panel.classList.remove('open');
+  }
+});
+
+function togglePostsChannel(channelId, checked) {
+  if (checked) postsSelectedChannels.add(channelId);
+  else postsSelectedChannels.delete(channelId);
+  updatePostsChannelCount();
+  renderFilteredPosts();
+}
+
+function setAllPostsChannels(selectAll) {
+  document.querySelectorAll('#posts-channel-list input[type=checkbox]').forEach(box => {
+    box.checked = selectAll;
+    const id = box.dataset.channelId;
+    if (selectAll) postsSelectedChannels.add(id);
+    else postsSelectedChannels.delete(id);
+  });
+  updatePostsChannelCount();
+  renderFilteredPosts();
+}
+
+function updatePostsChannelCount() {
+  const el    = document.getElementById('posts-channel-count');
+  const total = document.querySelectorAll('#posts-channel-list input[type=checkbox]').length;
+  if (!el) return;
+  el.textContent = (total && postsSelectedChannels.size < total) ? ` (${postsSelectedChannels.size}/${total})` : '';
 }
 
 function renderFilteredPosts() {
@@ -1668,7 +1780,7 @@ function renderFilteredPosts() {
   const timeframe = document.getElementById('posts-timeframe').value;   // 'all' | '1' | '7' | '30'
   const membership = document.getElementById('posts-membership').value; // 'all' | 'members' | 'public'
 
-  let list = _postsRaw.slice();
+  let list = _postsRaw.filter(p => postsSelectedChannels.has(p.channel_id));
 
   if (membership === 'members') list = list.filter(p => p.is_members_only);
   else if (membership === 'public') list = list.filter(p => !p.is_members_only);
