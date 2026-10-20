@@ -1819,14 +1819,29 @@ def check_all_channels():
     # check_all_channels() cycles (see constant near top of file), since posts
     # change far less often than live status and scanning /posts every
     # single auto-check tick would hammer YouTube unnecessarily.
+    #
+    # Run concurrently (same pattern as the live-check pool above), not
+    # sequentially: a sequential pass over every YouTube channel can take
+    # minutes, and each entry only gets its results saved once ITS OWN fetch
+    # finishes — so a process restart mid-pass (e.g. a redeploy) permanently
+    # loses progress on every channel after wherever it had reached, and
+    # since _post_check_n resets to 0 on restart, the NEXT pass restarts from
+    # the same spot at the top of the channel list every time. Running this
+    # concurrently finishes a full pass in roughly the same order of time as
+    # the live-check pass above, which avoids that trap in practice.
     n = state["_post_check_n"]
     if n == 0:
         yt_channels = [c for c in channels if c.get("platform", "youtube") == "youtube"]
-        for ch in yt_channels:
-            try:
-                check_channel_posts(ch)
-            except Exception as e:
-                log.warning(f"[posts] error checking {ch.get('name','?')}: {e}")
+        t0 = time.time()
+        with ThreadPoolExecutor(max_workers=_CHECK_WORKERS) as pool:
+            post_futures = {pool.submit(check_channel_posts, ch): ch for ch in yt_channels}
+            for fut in as_completed(post_futures):
+                try:
+                    fut.result()
+                except Exception as e:
+                    ch = post_futures[fut]
+                    log.warning(f"[posts] error checking {ch.get('name','?')}: {e}")
+        log.info(f"[posts] {len(yt_channels)} channels checked in {time.time() - t0:.1f}s")
     state["_post_check_n"] = (n + 1) % POST_CHECK_EVERY_N_CYCLES
 
 
