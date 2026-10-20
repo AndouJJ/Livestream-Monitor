@@ -68,8 +68,18 @@ def _require_auth():
         )
 
 DATA_FILE        = "channels.json"
+POSTS_FILE       = "posts.json"
 DEFAULT_INTERVAL = 90
 REQ_TIMEOUT      = 15
+
+# How many check_all_channels() cycles to skip between community-post scans.
+# Posts change far less often than live status, and this keeps us from
+# hammering YouTube's /community page every single auto-check tick (mirrors
+# the _upcoming_check_n staggering used for the upcoming-streams scan).
+POST_CHECK_EVERY_N_CYCLES = 10
+
+# Max posts kept per channel in posts.json (oldest trimmed first).
+POSTS_PER_CHANNEL_CAP = 20
 
 HEADERS = {
     "User-Agent": (
@@ -126,11 +136,13 @@ _saved = _load_settings()
 
 state = {
     "channels":          [],
+    "posts":             {},   # channel_id -> list of post dicts, newest-first
     "auto_check":        _saved.get("auto_check", True),
     "interval":          _saved.get("interval", DEFAULT_INTERVAL),
     "download_dir":      _saved.get("download_dir", os.environ.get("DOWNLOAD_BASE_DIR", "downloads")),
     "last_global_check": None,
     "_last_auto_ts":     0,
+    "_post_check_n":     0,
 }
 _lock = threading.Lock()
 
@@ -165,6 +177,29 @@ def save_channels():
         log.info(f"[save] upcoming/waiting channels: {upcoming}")
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(state["channels"], f, indent=2, ensure_ascii=False)
+
+
+# ─── Community posts persistence ───────────────────────────────────────────────
+# Stored separately from channels.json (keyed by channel_id -> list of post
+# dicts, newest-first) to keep channels.json small.
+
+_posts_lock = threading.Lock()
+
+
+def load_posts() -> dict:
+    if Path(POSTS_FILE).exists():
+        try:
+            with open(POSTS_FILE, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            log.warning(f"[posts] could not load {POSTS_FILE}: {e}")
+    return {}
+
+
+def save_posts():
+    with _posts_lock:
+        with open(POSTS_FILE, "w", encoding="utf-8") as f:
+            json.dump(state["posts"], f, indent=2, ensure_ascii=False)
 
 
 # ─── Free chat filter ─────────────────────────────────────────────────────────
@@ -1434,6 +1469,191 @@ def check_live(ch: dict) -> dict:
     return check_youtube_live(ch["channel_id"])
 
 
+# ─── Community posts ───────────────────────────────────────────────────────────
+
+def _yt_runs_text(obj: dict) -> str:
+    """Concatenate the .text of each run in a YouTube `{"runs":[...]}` text object."""
+    try:
+        runs = obj.get("runs") or []
+        return "".join(r.get("text", "") for r in runs if isinstance(r, dict))
+    except Exception:
+        return ""
+
+
+def _yt_simple_or_runs_text(obj) -> str:
+    """Handle both `{"simpleText": "..."}` and `{"runs": [...]}` text shapes."""
+    if not isinstance(obj, dict):
+        return ""
+    if "simpleText" in obj:
+        return obj.get("simpleText") or ""
+    if "runs" in obj:
+        return _yt_runs_text(obj)
+    return ""
+
+
+def _yt_extract_post_images(post: dict) -> list:
+    """Pull attachment image URLs (largest thumbnail) from a post renderer."""
+    images = []
+    try:
+        attachment = post.get("backstageAttachment") or {}
+        if "backstageImageRenderer" in attachment:
+            thumbs = (attachment["backstageImageRenderer"].get("image", {})
+                      .get("thumbnails") or [])
+            if thumbs:
+                images.append(thumbs[-1].get("url", ""))
+        elif "postMultiImageRenderer" in attachment:
+            for img in attachment["postMultiImageRenderer"].get("images", []):
+                thumbs = (img.get("backstageImageRenderer", {}).get("image", {})
+                          .get("thumbnails") or [])
+                if thumbs:
+                    images.append(thumbs[-1].get("url", ""))
+        # pollRenderer: no image, text-only — skip (choices aren't surfaced here)
+    except Exception as e:
+        log.warning(f"[posts] image extraction failed: {e}")
+    return [u for u in images if u]
+
+
+def fetch_community_posts(channel_id: str, limit: int = 10) -> list:
+    """
+    Scrape a YouTube channel's Community tab for recent posts (public and
+    membership-only). Uses the cookie-bearing session so membership-gated
+    posts render for logged-in/member accounts.
+
+    NOTE: this walks YouTube's internal ytInitialData schema, which is not a
+    stable public API and can change without notice. Every step here is
+    defensive — a shape mismatch degrades to skipping that post/field rather
+    than raising, and the whole fetch degrades to [] on failure.
+    """
+    posts = []
+    try:
+        session = _make_session()
+        url     = f"https://www.youtube.com/channel/{channel_id}/community"
+        r       = session.get(url, timeout=REQ_TIMEOUT)
+        html    = r.text
+        data    = _yt_parse_initial_data(html)
+        if not data:
+            log.warning(f"[posts] {channel_id}: no ytInitialData found on /community")
+            return []
+
+        tabs = (data.get("contents", {})
+                     .get("twoColumnBrowseResultsRenderer", {})
+                     .get("tabs", []) or [])
+        community_tab = None
+        for tab in tabs:
+            tr = tab.get("tabRenderer") or {}
+            if (tr.get("title") or "").strip().lower() == "community":
+                community_tab = tr
+                break
+        if community_tab is None:
+            log.info(f"[posts] {channel_id}: no Community tab found (channel may not have one)")
+            return []
+
+        sections = (community_tab.get("content", {})
+                                  .get("sectionListRenderer", {})
+                                  .get("contents", []) or [])
+
+        fetched_at = datetime.now(timezone.utc).isoformat()
+
+        for section in sections:
+            items = (section.get("itemSectionRenderer", {}).get("contents", []) or [])
+            for item in items:
+                try:
+                    thread = item.get("backstagePostThreadRenderer")
+                    if not thread:
+                        continue
+                    post_wrap = thread.get("post") or {}
+                    post = post_wrap.get("backstagePostRenderer") or post_wrap.get("sharedPostRenderer")
+                    if not post:
+                        continue  # unrecognized post shape — skip gracefully
+
+                    post_id = post.get("postId")
+                    if not post_id:
+                        continue
+
+                    text = _yt_runs_text(post.get("contentText") or {})
+                    published_text = _yt_simple_or_runs_text(post.get("publishedTimeText") or {})
+                    is_members_only = "sponsorsOnlyBadge" in post
+                    images = _yt_extract_post_images(post)
+                    like_count_text = None
+                    try:
+                        like_count_text = (post.get("voteCount") or {}).get("simpleText")
+                    except Exception:
+                        pass
+
+                    posts.append({
+                        "post_id":         post_id,
+                        "channel_id":      channel_id,
+                        "text":            text,
+                        "published_text":  published_text,
+                        "fetched_at":      fetched_at,
+                        "is_members_only": bool(is_members_only),
+                        "images":          images,
+                        "url":             f"https://www.youtube.com/post/{post_id}",
+                        "like_count_text": like_count_text,
+                    })
+                except Exception as e:
+                    log.warning(f"[posts] {channel_id}: skipping malformed post: {e}")
+                    continue
+
+            if len(posts) >= limit:
+                break
+
+    except Exception as e:
+        log.warning(f"[posts] {channel_id}: fetch failed: {e}")
+        return []
+
+    return posts[:limit]
+
+
+def check_channel_posts(ch: dict) -> None:
+    """
+    Fetch a channel's community posts, diff against what's stored, fire a
+    "new_post" notification for genuinely new ones, and persist the merged
+    list. YouTube-only — Twitch has no equivalent concept.
+    """
+    if ch.get("platform") == "twitch":
+        return
+
+    channel_id = ch["channel_id"]
+    try:
+        fetched = fetch_community_posts(channel_id)
+    except Exception as e:
+        log.warning(f"[posts] check_channel_posts({channel_id}) failed: {e}")
+        return
+
+    if not fetched:
+        return
+
+    with _posts_lock:
+        existing     = state["posts"].get(channel_id, [])
+        existing_ids = {p["post_id"] for p in existing}
+        new_posts    = [p for p in fetched if p["post_id"] not in existing_ids]
+
+        # Add channel_name at notify/store time so renames don't go stale in old entries.
+        for p in fetched:
+            p["channel_name"] = ch.get("name", channel_id)
+
+        # Merge newest-first (fetched is already newest-first from YouTube's feed
+        # ordering), dedup by post_id, cap length.
+        merged, seen = [], set()
+        for p in fetched + existing:
+            if p["post_id"] in seen:
+                continue
+            seen.add(p["post_id"])
+            merged.append(p)
+        state["posts"][channel_id] = merged[:POSTS_PER_CHANNEL_CAP]
+
+    save_posts()
+
+    if new_posts:
+        name = ch.get("name", channel_id)
+        for p in new_posts:
+            preview = (p["text"][:100] + "…") if len(p["text"]) > 100 else p["text"]
+            body    = preview if p["text"] else "(image post)"
+            log.info(f"[posts] new post from {name}: {p['post_id']}")
+            _push_notif("new_post", f"📝 {name} posted", body, p["url"])
+
+
 # Consecutive offline checks needed before confirming a live stream ended.
 # Prevents notification spam from transient scrape failures.
 _OFFLINE_CONFIRM = 2
@@ -1588,6 +1808,20 @@ def check_all_channels():
     with _lock:
         state["last_global_check"] = datetime.now(timezone.utc).isoformat()
     save_channels()
+
+    # ── Community posts: throttled to once every POST_CHECK_EVERY_N_CYCLES ─────
+    # check_all_channels() cycles (see constant near top of file), since posts
+    # change far less often than live status and scanning /community every
+    # single auto-check tick would hammer YouTube unnecessarily.
+    n = state["_post_check_n"]
+    if n == 0:
+        yt_channels = [c for c in channels if c.get("platform", "youtube") == "youtube"]
+        for ch in yt_channels:
+            try:
+                check_channel_posts(ch)
+            except Exception as e:
+                log.warning(f"[posts] error checking {ch.get('name','?')}: {e}")
+    state["_post_check_n"] = (n + 1) % POST_CHECK_EVERY_N_CYCLES
 
 
 # ─── Auto-checker thread ──────────────────────────────────────────────────────
@@ -1824,6 +2058,55 @@ def api_notifications():
         _notif_queue.clear()
     return jsonify(notifs)
 
+
+@app.route("/api/posts", methods=["GET"])
+def api_get_posts():
+    """
+    Flattened, newest-first list of community posts across all channels
+    (or a single channel via ?channel_id=). We don't have a reliable absolute
+    timestamp for each post (YouTube only gives a relative string like
+    "3 days ago"), so "newest-first" here sorts by `fetched_at` — when our
+    scraper first saw the post — which is a best-effort proxy, not the post's
+    true publish time.
+    """
+    channel_id = request.args.get("channel_id", "").strip()
+    with _posts_lock:
+        if channel_id:
+            flat = list(state["posts"].get(channel_id, []))
+        else:
+            flat = [p for plist in state["posts"].values() for p in plist]
+    flat.sort(key=lambda p: p.get("fetched_at") or "", reverse=True)
+    return jsonify(flat)
+
+
+@app.route("/api/posts/<post_id>", methods=["DELETE"])
+def api_delete_post(post_id):
+    """Dismiss/clear a single post from the stored feed."""
+    with _posts_lock:
+        found = False
+        for channel_id, plist in state["posts"].items():
+            before = len(plist)
+            state["posts"][channel_id] = [p for p in plist if p["post_id"] != post_id]
+            if len(state["posts"][channel_id]) != before:
+                found = True
+        if not found:
+            return jsonify({"error": "Not found"}), 404
+    save_posts()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/posts/check", methods=["POST"])
+def api_check_posts_now():
+    """Force an immediate community-posts scan for all YouTube channels."""
+    def _run():
+        yt_channels = [c for c in state["channels"] if c.get("platform", "youtube") == "youtube"]
+        for ch in yt_channels:
+            try:
+                check_channel_posts(ch)
+            except Exception as e:
+                log.warning(f"[posts] error checking {ch.get('name','?')}: {e}")
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True})
 
 
 # ─── Download manager ─────────────────────────────────────────────────────────
@@ -2854,6 +3137,7 @@ def api_cookies_delete():
 
 if __name__ == "__main__":
     state["channels"] = load_channels()
+    state["posts"]    = load_posts()
     # Migrate old last_status dicts that predate is_upcoming / is_waiting / is_waiting fields
     _now_iso = datetime.now(timezone.utc).isoformat()
     for _i, _ch in enumerate(state["channels"]):

@@ -4,6 +4,7 @@ cookies.txt
 
 # Runtime state (created on first run / mounted as volumes)
 settings.json
+posts.json
 logs/
 downloads/
 
