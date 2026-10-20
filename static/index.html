@@ -482,6 +482,46 @@ select option { background: var(--surf2); }
 }
 .dl-toggle-btn .dl-badge { position: absolute; top: -4px; right: -4px; padding: 1px 4px; }
 
+/* ── Community posts drawer (mirrors .dl-drawer pattern) ── */
+.posts-drawer {
+  position: fixed; right: 0; top: 54px; bottom: 0;
+  width: 360px; background: var(--surf); border-left: 1px solid var(--border);
+  display: flex; flex-direction: column; z-index: 500;
+  transform: translateX(100%); transition: transform .25s ease;
+}
+.posts-drawer.open { transform: translateX(0); }
+
+.posts-list { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+
+.post-item {
+  background: var(--surf2); border: 1px solid var(--border2); border-radius: var(--r);
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;
+}
+.post-item.members { border-color: rgba(232,192,56,.3); }
+.post-top { display: flex; align-items: center; gap: 8px; }
+.post-avatar {
+  width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+  background: var(--surf3);
+}
+.post-chan-name { font-size: 12px; font-weight: 600; color: var(--text); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.post-time { font-size: 10px; color: var(--text3); flex-shrink: 0; }
+.members-tag {
+  color: var(--yellow); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: 9px;
+  border: 1px solid rgba(232,192,56,.4); border-radius: 3px; padding: 1px 5px; flex-shrink: 0;
+  display: inline-flex; align-items: center; gap: 3px;
+}
+.post-text { font-size: 12px; color: var(--text2); white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
+.post-images { display: flex; flex-wrap: wrap; gap: 4px; }
+.post-images img { max-width: 100%; max-height: 140px; border-radius: var(--r); border: 1px solid var(--border2); }
+.post-like { font-size: 10px; color: var(--text3); }
+.post-link { font-size: 10px; color: var(--text3); text-decoration: none; }
+.post-link:hover { color: var(--text2); }
+.posts-toggle-btn {
+  position: relative;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.posts-toggle-btn .dl-badge { position: absolute; top: -4px; right: -4px; padding: 1px 4px; }
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar       { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -497,6 +537,7 @@ select option { background: var(--surf2); }
 }
 .notif-toast.live     { border-color: rgba(232,60,66,.4);  }
 .notif-toast.download { border-color: rgba(34,217,138,.35); }
+.notif-toast.post     { border-color: rgba(232,192,56,.4);  }
 .notif-icon { font-size: 18px; flex-shrink: 0; line-height: 1.3; }
 .notif-body { min-width: 0; }
 .notif-title { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -532,6 +573,11 @@ select option { background: var(--surf2); }
       <div class="pill" id="pill-live"><div class="dot"></div><span id="pill-live-txt">0 LIVE</span></div>
       <div class="pill" id="pill-upcoming"><div class="dot"></div><span id="pill-upcoming-txt">0 UPCOMING</span></div>
       <div class="pill" id="pill-auto"><div class="dot"></div><span id="pill-auto-txt">AUTO OFF</span></div>
+      <button class="btn sm posts-toggle-btn" onclick="togglePostsDrawer()" title="Community Posts">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Posts
+        <span class="dl-badge" id="posts-badge">0</span>
+      </button>
       <button class="btn sm dl-toggle-btn" onclick="toggleDrawer()" title="Downloads">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Downloads
@@ -734,6 +780,29 @@ select option { background: var(--surf2); }
   </div>
 </div>
 
+<!-- Community Posts Drawer -->
+<div class="posts-drawer" id="posts-drawer">
+  <div class="dl-header">
+    <div class="dl-header-title">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      Community Posts
+      <span class="dl-badge" id="posts-badge2"></span>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button class="btn sm" onclick="syncPosts(true)" title="Check for new posts now">↻ Refresh</button>
+      <button class="btn sm" onclick="togglePostsDrawer()">✕ Close</button>
+    </div>
+  </div>
+
+  <div class="posts-list" id="posts-list">
+    <div class="dl-empty">
+      <div class="dl-empty-icon">📝</div>
+      <p>No posts yet</p>
+      <p style="font-size:10px;margin-top:4px;color:var(--text3)">Community posts from your YouTube channels show up here</p>
+    </div>
+  </div>
+</div>
+
 <!-- VOD Download Modal -->
 <div class="modal-bg" id="vod-modal">
   <div class="modal vod-modal">
@@ -809,6 +878,8 @@ function stopChannelPolling() {
   if (s.auto_check) startChannelPolling(9000);
   syncCookieStatus();
   loadTz();
+  syncPosts();
+  startPostsPoll();
 })();
 
 // ── API ────────────────────────────────────────────────────────────────────
@@ -1492,6 +1563,116 @@ async function removeDownload(id) {
   await syncDownloads();
 }
 
+// ── Community posts ───────────────────────────────────────────────────────
+let postsDrawerOpen = false;
+let postsPollTimer  = null;
+let _postsLastSeenTs = '';
+try { _postsLastSeenTs = localStorage.getItem('postsLastSeenTs') || ''; } catch(e) {}
+
+function togglePostsDrawer() {
+  postsDrawerOpen = !postsDrawerOpen;
+  document.getElementById('posts-drawer').classList.toggle('open', postsDrawerOpen);
+  if (postsDrawerOpen) {
+    syncPosts();
+    _postsLastSeenTs = new Date().toISOString();
+    try { localStorage.setItem('postsLastSeenTs', _postsLastSeenTs); } catch(e) {}
+    updatePostsBadge([]); // will be recomputed on next syncPosts, clear for now
+  }
+}
+
+async function syncPosts(manualCheck = false) {
+  if (manualCheck) {
+    await call('/api/posts/check', 'POST');
+    toast('Checking for new posts…', 'inf');
+  }
+  const list = await call('/api/posts');
+  renderPosts(Array.isArray(list) ? list : []);
+}
+
+function startPostsPoll() {
+  if (postsPollTimer) return;
+  // Lighter-weight than the channel-status poll — posts change rarely.
+  postsPollTimer = setInterval(() => syncPosts(), 60000);
+}
+
+function updatePostsBadge(list) {
+  const badge1 = document.getElementById('posts-badge');
+  const badge2 = document.getElementById('posts-badge2');
+  const unread = postsDrawerOpen ? 0 : list.filter(p => (p.fetched_at || '') > _postsLastSeenTs).length;
+  [badge1, badge2].forEach(b => {
+    if (!b) return;
+    b.textContent = unread;
+    b.classList.toggle('visible', unread > 0);
+  });
+}
+
+function renderPosts(list) {
+  const el = document.getElementById('posts-list');
+  updatePostsBadge(list);
+
+  if (!list.length) {
+    el.innerHTML = `<div class="dl-empty">
+      <div class="dl-empty-icon">📝</div>
+      <p>No posts yet</p>
+      <p style="font-size:10px;margin-top:4px;color:var(--text3)">Community posts from your YouTube channels show up here</p>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = list.map((p, i) => {
+    const ch        = channels.find(c => c.channel_id === p.channel_id && (c.platform || 'youtube') === 'youtube');
+    const avatarSrc = ch && ch.avatar ? '/api/avatar?url=' + encodeURIComponent(ch.avatar) : '';
+    const membersTag = p.is_members_only
+      ? '<span class="members-tag">🔒 Members Only</span>' : '';
+    const imagesHtml = (p.images && p.images.length)
+      ? '<div class="post-images">' + p.images.map(u => `<img src="${x(u)}" alt="" loading="lazy">`).join('') + '</div>'
+      : '';
+    const likeHtml = p.like_count_text
+      ? `<div class="post-like">👍 ${x(p.like_count_text)}</div>` : '';
+
+    return `<div class="post-item ${p.is_members_only ? 'members' : ''}" data-post-idx="${i}">
+      <div class="post-top">
+        ${avatarSrc ? `<img class="post-avatar" src="${avatarSrc}" alt="" loading="lazy" onerror="this.style.display='none'">` : '<div class="post-avatar"></div>'}
+        <div class="post-chan-name" data-post-chan="${i}"></div>
+        ${membersTag}
+        <div class="post-time" data-post-time="${i}"></div>
+      </div>
+      <div class="post-text" data-post-text="${i}"></div>
+      ${imagesHtml}
+      ${likeHtml}
+      <a class="post-link" data-post-url="${i}" target="_blank" rel="noopener">View on YouTube →</a>
+      <div class="dl-item-actions">
+        <button class="btn sm" onclick="dismissPost('${x(p.post_id)}')">✕ Dismiss</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Untrusted scraped text (channel name, post body) goes through textContent,
+  // never interpolated into the HTML string above — same pattern used for
+  // card-name / stream-ttl elsewhere in this file.
+  el.querySelectorAll('[data-post-chan]').forEach(node => {
+    const p = list[+node.dataset.postChan];
+    if (p) node.textContent = p.channel_name || '';
+  });
+  el.querySelectorAll('[data-post-text]').forEach(node => {
+    const p = list[+node.dataset.postText];
+    if (p) node.textContent = p.text || '';
+  });
+  el.querySelectorAll('[data-post-time]').forEach(node => {
+    const p = list[+node.dataset.postTime];
+    if (p) node.textContent = p.published_text || '';
+  });
+  el.querySelectorAll('[data-post-url]').forEach(node => {
+    const p = list[+node.dataset.postUrl];
+    if (p) node.href = p.url || '#';
+  });
+}
+
+async function dismissPost(postId) {
+  await call('/api/posts/' + encodeURIComponent(postId), 'DELETE');
+  await syncPosts();
+}
+
 // ── Toast ──────────────────────────────────────────────────────────────────
 function toast(msg, type = '') {
   const c = document.getElementById('toasts');
@@ -1672,9 +1853,11 @@ async function pollNotifications() {
 function showNotif(n) {
   const isLive = n.kind === 'live';
   const isDone = n.kind === 'download_done' || n.kind === 'download_error';
+  const isPost = n.kind === 'new_post';
   // In-app toast (always shown)
-  const type = isLive ? 'err' : (isDone ? 'ok' : '');
+  const type = isLive ? 'err' : (isDone ? 'ok' : (isPost ? 'inf' : ''));
   toast(n.title + (n.body ? ' — ' + n.body : ''), type);
+  if (isPost) syncPosts(); // refresh the drawer/badge so it's ready when opened
   // Browser notification (if permission granted)
   if (notifEnabled && Notification.permission === 'granted') {
     const bn = new Notification(n.title, {
