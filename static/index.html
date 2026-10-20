@@ -491,31 +491,58 @@ select option { background: var(--surf2); }
 }
 .posts-drawer.open { transform: translateX(0); }
 
-.posts-list { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.posts-toolbar {
+  display: flex; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--border);
+  flex-shrink: 0; flex-wrap: wrap;
+}
+.posts-select {
+  flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--border2);
+  color: var(--text2); font-family: var(--font); font-size: 11px; font-weight: 600;
+  padding: 5px 6px; border-radius: var(--r); outline: none; cursor: pointer;
+}
+.posts-select:focus { border-color: var(--accent-yt); }
+
+.posts-list { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
 
 .post-item {
   background: var(--surf2); border: 1px solid var(--border2); border-radius: var(--r);
-  padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
 }
-.post-item.members { border-color: rgba(232,192,56,.3); }
-.post-top { display: flex; align-items: center; gap: 8px; }
+.post-item.members { border-color: rgba(232,192,56,.35); background: linear-gradient(180deg, rgba(232,192,56,.05), var(--surf2) 60px); }
+.post-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .post-avatar {
-  width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+  width: 24px; height: 24px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
   background: var(--surf3);
 }
-.post-chan-name { font-size: 12px; font-weight: 600; color: var(--text); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.post-chan-name { font-size: 13px; font-weight: 700; color: var(--text); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .post-time { font-size: 10px; color: var(--text3); flex-shrink: 0; }
-.members-tag {
-  color: var(--yellow); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: 9px;
-  border: 1px solid rgba(232,192,56,.4); border-radius: 3px; padding: 1px 5px; flex-shrink: 0;
+.members-tag, .public-tag {
+  font-weight: 700; letter-spacing: .07em; text-transform: uppercase; font-size: 9px;
+  border-radius: 3px; padding: 2px 6px; flex-shrink: 0;
   display: inline-flex; align-items: center; gap: 3px;
 }
-.post-text { font-size: 12px; color: var(--text2); white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
-.post-images { display: flex; flex-wrap: wrap; gap: 4px; }
-.post-images img { max-width: 100%; max-height: 140px; border-radius: var(--r); border: 1px solid var(--border2); }
-.post-like { font-size: 10px; color: var(--text3); }
-.post-link { font-size: 10px; color: var(--text3); text-decoration: none; }
-.post-link:hover { color: var(--text2); }
+.members-tag { color: var(--yellow); border: 1px solid rgba(232,192,56,.45); background: rgba(232,192,56,.08); }
+.public-tag  { color: var(--text3); border: 1px solid var(--border2); }
+.post-text {
+  font-size: 13px; color: var(--text); white-space: pre-wrap; word-break: break-word;
+  line-height: 1.65; position: relative;
+}
+.post-text.clamped { max-height: 220px; overflow: hidden; }
+.post-text.clamped::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 36px;
+  background: linear-gradient(180deg, transparent, var(--surf2));
+}
+.post-item.members .post-text.clamped::after { background: linear-gradient(180deg, transparent, rgba(27,26,20,.97)); }
+.post-expand-btn {
+  align-self: flex-start; background: none; border: none; color: var(--accent-yt);
+  font-family: var(--font); font-size: 11px; font-weight: 600; cursor: pointer; padding: 0;
+}
+.post-expand-btn:hover { text-decoration: underline; }
+.post-images { display: flex; flex-wrap: wrap; gap: 5px; }
+.post-images img { max-width: 100%; max-height: 160px; border-radius: var(--r); border: 1px solid var(--border2); }
+.post-like { font-size: 11px; color: var(--text3); }
+.post-link { font-size: 11px; color: var(--orange); text-decoration: none; font-weight: 500; }
+.post-link:hover { text-decoration: underline; }
 .posts-toggle-btn {
   position: relative;
   display: inline-flex; align-items: center; gap: 5px;
@@ -792,6 +819,24 @@ select option { background: var(--surf2); }
       <button class="btn sm" onclick="syncPosts(true)" title="Check for new posts now">↻ Refresh</button>
       <button class="btn sm" onclick="togglePostsDrawer()">✕ Close</button>
     </div>
+  </div>
+
+  <div class="posts-toolbar">
+    <select id="posts-sort" class="posts-select" onchange="renderFilteredPosts()" title="Sort order">
+      <option value="desc">Newest first</option>
+      <option value="asc">Oldest first</option>
+    </select>
+    <select id="posts-timeframe" class="posts-select" onchange="renderFilteredPosts()" title="Time frame">
+      <option value="all">All time</option>
+      <option value="1">Last 24h</option>
+      <option value="7">Last 7 days</option>
+      <option value="30">Last 30 days</option>
+    </select>
+    <select id="posts-membership" class="posts-select" onchange="renderFilteredPosts()" title="Membership filter">
+      <option value="all">All posts</option>
+      <option value="members">🔒 Members only</option>
+      <option value="public">🌐 Public only</option>
+    </select>
   </div>
 
   <div class="posts-list" id="posts-list">
@@ -1580,6 +1625,8 @@ function togglePostsDrawer() {
   }
 }
 
+let _postsRaw = [];
+
 async function syncPosts(manualCheck = false) {
   if (manualCheck) {
     await call('/api/posts/check', 'POST');
@@ -1606,15 +1653,47 @@ function updatePostsBadge(list) {
   });
 }
 
+// Posts longer than this (chars) are collapsed by default with a "Show more" toggle.
+const POST_CLAMP_CHARS = 280;
+
 function renderPosts(list) {
-  const el = document.getElementById('posts-list');
+  _postsRaw = list;
   updatePostsBadge(list);
+  renderFilteredPosts();
+}
+
+function renderFilteredPosts() {
+  const el        = document.getElementById('posts-list');
+  const sortDir   = document.getElementById('posts-sort').value;        // 'desc' | 'asc'
+  const timeframe = document.getElementById('posts-timeframe').value;   // 'all' | '1' | '7' | '30'
+  const membership = document.getElementById('posts-membership').value; // 'all' | 'members' | 'public'
+
+  let list = _postsRaw.slice();
+
+  if (membership === 'members') list = list.filter(p => p.is_members_only);
+  else if (membership === 'public') list = list.filter(p => !p.is_members_only);
+
+  if (timeframe !== 'all') {
+    const cutoffMs = Date.now() - (+timeframe) * 86400000;
+    list = list.filter(p => {
+      const t = p.fetched_at ? new Date(p.fetched_at).getTime() : 0;
+      return t >= cutoffMs;
+    });
+  }
+
+  // fetched_at (when our scraper first saw the post) is the only reliable
+  // timestamp we have — YouTube only exposes a relative string like
+  // "3 days ago" for the actual publish time, not sortable precisely.
+  list.sort((a, b) => {
+    const ta = a.fetched_at || '', tb = b.fetched_at || '';
+    return sortDir === 'asc' ? ta.localeCompare(tb) : tb.localeCompare(ta);
+  });
 
   if (!list.length) {
     el.innerHTML = `<div class="dl-empty">
       <div class="dl-empty-icon">📝</div>
-      <p>No posts yet</p>
-      <p style="font-size:10px;margin-top:4px;color:var(--text3)">Community posts from your YouTube channels show up here</p>
+      <p>No posts${_postsRaw.length ? ' match these filters' : ' yet'}</p>
+      <p style="font-size:10px;margin-top:4px;color:var(--text3)">${_postsRaw.length ? 'Try widening the filters above' : 'Community posts from your YouTube channels show up here'}</p>
     </div>`;
     return;
   }
@@ -1623,12 +1702,16 @@ function renderPosts(list) {
     const ch        = channels.find(c => c.channel_id === p.channel_id && (c.platform || 'youtube') === 'youtube');
     const avatarSrc = ch && ch.avatar ? '/api/avatar?url=' + encodeURIComponent(ch.avatar) : '';
     const membersTag = p.is_members_only
-      ? '<span class="members-tag">🔒 Members Only</span>' : '';
+      ? '<span class="members-tag">🔒 Members Only</span>'
+      : '<span class="public-tag">🌐 Public</span>';
     const imagesHtml = (p.images && p.images.length)
       ? '<div class="post-images">' + p.images.map(u => `<img src="${x(u)}" alt="" loading="lazy">`).join('') + '</div>'
       : '';
     const likeHtml = p.like_count_text
       ? `<div class="post-like">👍 ${x(p.like_count_text)}</div>` : '';
+    const isLong    = (p.text || '').length > POST_CLAMP_CHARS;
+    const expandBtn = isLong
+      ? `<button class="post-expand-btn" data-post-toggle="${i}" onclick="togglePostText(${i})">Show more</button>` : '';
 
     return `<div class="post-item ${p.is_members_only ? 'members' : ''}" data-post-idx="${i}">
       <div class="post-top">
@@ -1637,7 +1720,8 @@ function renderPosts(list) {
         ${membersTag}
         <div class="post-time" data-post-time="${i}"></div>
       </div>
-      <div class="post-text" data-post-text="${i}"></div>
+      <div class="post-text ${isLong ? 'clamped' : ''}" data-post-text="${i}"></div>
+      ${expandBtn}
       ${imagesHtml}
       ${likeHtml}
       <a class="post-link" data-post-url="${i}" target="_blank" rel="noopener">View on YouTube →</a>
@@ -1666,6 +1750,15 @@ function renderPosts(list) {
     const p = list[+node.dataset.postUrl];
     if (p) node.href = p.url || '#';
   });
+}
+
+function togglePostText(i) {
+  const textEl = document.querySelector(`[data-post-text="${i}"]`);
+  const btnEl  = document.querySelector(`[data-post-toggle="${i}"]`);
+  if (!textEl || !btnEl) return;
+  const expanded = textEl.classList.toggle('expanded');
+  textEl.classList.toggle('clamped', !expanded);
+  btnEl.textContent = expanded ? 'Show less' : 'Show more';
 }
 
 async function dismissPost(postId) {
