@@ -2109,6 +2109,109 @@ def api_check_posts_now():
     return jsonify({"ok": True})
 
 
+def _count_key_anywhere(obj, key: str, _n=0) -> int:
+    """Recursively count occurrences of a dict key anywhere in a nested JSON
+    structure. Used to detect schema drift: if the expected tabs->sections
+    walk finds nothing but this key exists elsewhere in the page's JSON,
+    YouTube likely moved it rather than removed it."""
+    if _n > 40:  # guard against pathological recursion depth
+        return 0
+    count = 0
+    if isinstance(obj, dict):
+        if key in obj:
+            count += 1
+        for v in obj.values():
+            count += _count_key_anywhere(v, key, _n + 1)
+    elif isinstance(obj, list):
+        for v in obj:
+            count += _count_key_anywhere(v, key, _n + 1)
+    return count
+
+
+@app.route("/api/debug/posts/<path:channel_id>")
+def api_debug_posts(channel_id):
+    """
+    Debug endpoint: shows exactly what the community-posts scraper sees for
+    one channel, so a smoke test against real YouTube HTML can be diagnosed
+    without guessing. Mirrors the style/intent of /api/debug/channel/<id>.
+    """
+    with _lock:
+        ch = next((c for c in state["channels"] if c["channel_id"] == channel_id), None)
+    name = ch["name"] if ch else channel_id
+
+    url = f"https://www.youtube.com/channel/{channel_id}/community"
+    try:
+        session = _make_session()
+        r         = session.get(url, timeout=REQ_TIMEOUT)
+        html      = r.text
+        final_url = r.url
+    except Exception as e:
+        return jsonify({"channel": name, "error": f"fetch failed: {e}"})
+
+    data = _yt_parse_initial_data(html)
+
+    signals = {
+        "final_url":            final_url,
+        "html_length":          len(html),
+        "has_ytInitialData":    bool(data),
+    }
+
+    tab_titles     = []
+    community_tab  = None
+    sections_count = 0
+    items_in_first_section = 0
+    unrecognized_item_keys = []
+
+    if data:
+        tabs = (data.get("contents", {})
+                     .get("twoColumnBrowseResultsRenderer", {})
+                     .get("tabs", []) or [])
+        for tab in tabs:
+            tr = tab.get("tabRenderer") or {}
+            if tr.get("title"):
+                tab_titles.append(tr.get("title"))
+            if (tr.get("title") or "").strip().lower() == "community":
+                community_tab = tr
+
+        if community_tab is not None:
+            sections = (community_tab.get("content", {})
+                                      .get("sectionListRenderer", {})
+                                      .get("contents", []) or [])
+            sections_count = len(sections)
+            if sections:
+                first_items = sections[0].get("itemSectionRenderer", {}).get("contents", []) or []
+                items_in_first_section = len(first_items)
+                for item in first_items[:10]:
+                    if "backstagePostThreadRenderer" not in item:
+                        unrecognized_item_keys.append(list(item.keys()))
+
+    signals["tab_titles"]              = tab_titles
+    signals["community_tab_found"]     = community_tab is not None
+    signals["sections_count"]          = sections_count
+    signals["items_in_first_section"]  = items_in_first_section
+    signals["unrecognized_item_keys"]  = unrecognized_item_keys
+    # Schema-drift check: does the renderer key exist ANYWHERE in the page's
+    # JSON, even if our expected tabs->sections path didn't find it?
+    signals["backstagePostThreadRenderer_count_anywhere"] = (
+        _count_key_anywhere(data, "backstagePostThreadRenderer") if data else 0
+    )
+    signals["sponsorsOnlyBadge_count_anywhere"] = (
+        _count_key_anywhere(data, "sponsorsOnlyBadge") if data else 0
+    )
+
+    try:
+        parsed_posts = fetch_community_posts(channel_id, limit=10)
+    except Exception as e:
+        parsed_posts = []
+        signals["parse_error"] = str(e)
+
+    return jsonify({
+        "channel":      name,
+        "signals":      signals,
+        "parsed_posts": parsed_posts,
+    })
+
+
 # ─── Download manager ─────────────────────────────────────────────────────────
 #
 # YouTube streams  → ytarchive (video + metadata + thumbnail) +
