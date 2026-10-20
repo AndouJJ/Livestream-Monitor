@@ -494,6 +494,14 @@ select option { background: var(--surf2); }
 .posts-toolbar {
   display: flex; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--border);
   flex-shrink: 0; flex-wrap: wrap;
+  /* The page's global `* { z-index: 1 }` rule (used for the background dot
+     pattern) gives every element its own stacking context at the same
+     level. Without an explicit higher z-index here, .posts-channel-panel's
+     z-index:600 only wins WITHIN this toolbar's own local stacking context
+     — it can't escape above .posts-list below, which is a later sibling
+     tied at the same z-index:1 and wins the tie by DOM order. This bumps
+     the whole toolbar (and the popover inside it) above the post list. */
+  z-index: 50;
 }
 .posts-select {
   flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--border2);
