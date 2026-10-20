@@ -1535,12 +1535,18 @@ def fetch_community_posts(channel_id: str, limit: int = 10) -> list:
             log.warning(f"[posts] {channel_id}: no ytInitialData found on /community")
             return []
 
-        tabs = (data.get("contents", {})
-                     .get("twoColumnBrowseResultsRenderer", {})
-                     .get("tabs", []) or [])
+        contents = data.get("contents") or {}
+        # YouTube serves more than one page-layout schema for channel pages;
+        # try the known variants rather than assuming twoColumnBrowseResultsRenderer.
+        tabs = []
+        for root_key in ("twoColumnBrowseResultsRenderer", "singleColumnBrowseResultsRenderer"):
+            root = contents.get(root_key)
+            if root and root.get("tabs"):
+                tabs = root.get("tabs") or []
+                break
         community_tab = None
         for tab in tabs:
-            tr = tab.get("tabRenderer") or {}
+            tr = tab.get("tabRenderer") or tab.get("expandableTabRenderer") or {}
             if (tr.get("title") or "").strip().lower() == "community":
                 community_tab = tr
                 break
@@ -2154,6 +2160,10 @@ def api_debug_posts(channel_id):
         "final_url":            final_url,
         "html_length":          len(html),
         "has_ytInitialData":    bool(data),
+        "is_consent_wall":      "consent.youtube.com" in final_url,
+        "top_level_keys":       sorted(data.keys()) if data else [],
+        "contents_keys":        sorted((data.get("contents") or {}).keys()) if data else [],
+        "alerts":               data.get("alerts") if data else None,
     }
 
     tab_titles     = []
@@ -2161,13 +2171,23 @@ def api_debug_posts(channel_id):
     sections_count = 0
     items_in_first_section = 0
     unrecognized_item_keys = []
+    tabs_root_used = None
 
     if data:
-        tabs = (data.get("contents", {})
-                     .get("twoColumnBrowseResultsRenderer", {})
-                     .get("tabs", []) or [])
+        contents = data.get("contents") or {}
+        # YouTube serves more than one page-layout schema for channel pages;
+        # try the known variants rather than assuming twoColumnBrowseResultsRenderer.
+        for root_key in ("twoColumnBrowseResultsRenderer", "singleColumnBrowseResultsRenderer"):
+            root = contents.get(root_key)
+            if root and root.get("tabs"):
+                tabs_root_used = root_key
+                tabs = root.get("tabs") or []
+                break
+        else:
+            tabs = []
+
         for tab in tabs:
-            tr = tab.get("tabRenderer") or {}
+            tr = tab.get("tabRenderer") or tab.get("expandableTabRenderer") or {}
             if tr.get("title"):
                 tab_titles.append(tr.get("title"))
             if (tr.get("title") or "").strip().lower() == "community":
@@ -2185,6 +2205,7 @@ def api_debug_posts(channel_id):
                     if "backstagePostThreadRenderer" not in item:
                         unrecognized_item_keys.append(list(item.keys()))
 
+    signals["tabs_root_used"]          = tabs_root_used
     signals["tab_titles"]              = tab_titles
     signals["community_tab_found"]     = community_tab is not None
     signals["sections_count"]          = sections_count
